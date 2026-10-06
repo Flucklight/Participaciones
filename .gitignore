@@ -1,0 +1,28 @@
+# Entorno virtual y cachés
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Datos reales de alumnos: base de datos, respaldos, listas y exportaciones
+data/*
+!data/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+
+# Secretos y configuración local
+.env
+.env.*
+.claude/settings.local.json
+
+# Editor y sistema
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
