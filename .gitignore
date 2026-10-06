@@ -26,3 +26,7 @@ data/*
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Resultado del empaquetado (se regenera con participaciones.spec)
+build/
+dist/

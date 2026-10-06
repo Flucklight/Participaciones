@@ -10,6 +10,7 @@ from core.errores import ErrorDominio
 from core.models import Curso, ListaInscripcion, VistaPreviaImportacion
 
 from . import tema
+from .icono import aplicar_icono
 
 
 class Dialogo(ctk.CTkToplevel):
@@ -19,6 +20,7 @@ class Dialogo(ctk.CTkToplevel):
         super().__init__(master)
         self._ancho = ancho
         self.title(titulo)
+        aplicar_icono(self)
         self.resizable(False, False)
         self.transient(master.winfo_toplevel())
         self.resultado = None

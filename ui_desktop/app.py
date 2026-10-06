@@ -11,6 +11,7 @@ from core.repository import Repositorio
 from core.services import ServicioParticipaciones
 
 from . import tema
+from .icono import aplicar_icono
 from .vista_configuracion import VistaConfiguracion
 from .vista_curso import VistaCurso
 from .vista_historial import VistaHistorial
@@ -31,6 +32,7 @@ class App(ctk.CTk):
         self.servicio = ServicioParticipaciones(Repositorio(self.conexion))
 
         self.title("Participaciones")
+        aplicar_icono(self)
         self.geometry("1150x720")
         self.minsize(900, 560)
         self.configure(fg_color=tema.COLOR_FONDO)

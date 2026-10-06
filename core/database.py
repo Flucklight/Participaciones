@@ -5,7 +5,9 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-RUTA_POR_DEFECTO = Path(__file__).resolve().parent.parent / "data" / "participaciones.db"
+from .rutas import carpeta_datos
+
+RUTA_POR_DEFECTO = carpeta_datos() / "participaciones.db"
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS alumno (

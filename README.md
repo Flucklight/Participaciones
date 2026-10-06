@@ -82,19 +82,36 @@ La lista de inscripción (Excel de la facultad) trae el ciclo, carrera, materia 
 Si recreas el entorno en otra máquina: `python -m venv .venv` y luego `.venv/Scripts/python.exe -m pip install -r requirements.txt`.
 La base de datos se guarda en `data/participaciones.db`; al cerrar la aplicación se crea un respaldo en `data/backups/` (se conservan los 10 más recientes).
 
+## Generar el ejecutable (Windows)
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/construir_exe.ps1
+```
+
+Crea `dist/Participaciones/Participaciones.exe` (≈46 MB, tarda ~30 s). Para usarla en otra computadora copia **la carpeta completa** `dist/Participaciones/`; el `.exe` solo no funciona. No requiere instalar Python.
+
+- **Datos del ejecutable:** se guardan en `%LOCALAPPDATA%\Participaciones\data` (base de datos y respaldos), fuera de la carpeta de la app: reconstruir, mover o borrar `dist/` nunca toca tus datos. La versión de desarrollo (`python main.py`) usa `data/` del proyecto, así que **son dos bases independientes**. Para pasar datos de una a otra, copia `participaciones.db` entre ambas carpetas con la app cerrada. La ruta exacta aparece en **Configuración**.
+- **Ícono:** `assets/icon/FES ARAGON.png` es la fuente; `tools/crear_icono.py` genera `assets/icon/app.ico` (el script de construcción lo ejecuta solo).
+- **Receta:** `participaciones.spec`. Dependencias solo para compilar: `requirements-build.txt`.
+- Si el proyecto está en OneDrive, el script borra `dist/` y manda los temporales fuera de OneDrive para evitar errores de "Acceso denegado" por la sincronización.
+
 ## Estructura del proyecto
 
 ```
 Participaciones/
 ├── README.md
 ├── CLAUDE.md              # reglas y convenciones del proyecto
-├── core/                  # lógica, sin dependencia de la interfaz
+├── core/                  # lógica, sin dependencia de la interfaz (incluye rutas.py y version.py)
 │   ├── models.py
 │   ├── repository.py      # único lugar con SQL
 │   └── services.py
 ├── importers/
 │   └── lista_aragon.py
 ├── ui_desktop/
+├── assets/icon/           # logo (PNG) e ícono de la app (.ico)
+├── scripts/               # construir_exe.ps1
+├── tools/                 # crear_icono.py
+├── participaciones.spec   # receta de PyInstaller
 ├── tests/
 ├── data/                  # participaciones.db (no versionar)
 └── main.py

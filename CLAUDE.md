@@ -62,6 +62,11 @@ participacion(id, curso_id, alumno_id, decimas, fecha, nota)
    - El número de cuenta se guarda como **texto**; las fechas como fechas reales de Excel.
    - Si el archivo está abierto en Excel o la carpeta no existe, se informa con un mensaje claro (`ErrorDominio`), sin cerrar la app.
 
+11. **Rutas y empaquetado** (`core/rutas.py`): nunca construir rutas con `__file__` fuera de ese módulo.
+   - Desarrollo: datos en `data/` del proyecto. Empaquetada (`sys.frozen`): `%LOCALAPPDATA%\Participaciones\data`, **fuera** de la carpeta del `.exe`, para que reconstruir la app nunca borre datos.
+   - Los archivos incluidos (íconos, etc.) se leen con `rutas.recurso(...)`; deben listarse en `datas` de `participaciones.spec`.
+   - Se genera con `scripts/construir_exe.ps1`. La versión vive en `core/version.py` (súbela antes de cada entrega).
+
 ## Interfaz
 - Panel lateral izquierdo con **Cursos** y **Configuración** (solo esas dos por ahora).
 - **Cursos:** botones Crear / Importar / Eliminar arriba; cards (nombre, grupo, semestre) al centro; menú por card con Editar, Archivar, Eliminar.

@@ -8,6 +8,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from core.database import respaldar
+from core.version import VERSION
 
 from . import tema
 
@@ -48,6 +49,12 @@ class VistaConfiguracion(ctk.CTkFrame):
             self.contenedor, text_color=tema.COLOR_TEXTO_SUAVE, anchor="w", justify="left",
             text="Se crea un respaldo automático al cerrar la aplicación (se conservan los 10 más recientes).",
         ).pack(fill="x")
+
+        self._seccion("Acerca de")
+        ctk.CTkLabel(self.contenedor, text=f"Participaciones  ·  versión {VERSION}", anchor="w"
+                     ).pack(fill="x")
+        ctk.CTkLabel(self.contenedor, text="Gestor local de participaciones por semestre, materia y grupo.",
+                     anchor="w", text_color=tema.COLOR_TEXTO_SUAVE).pack(fill="x")
 
     @property
     def contenedor(self) -> ctk.CTkFrame:

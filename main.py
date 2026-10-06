@@ -6,7 +6,18 @@ from core.database import RUTA_POR_DEFECTO
 from ui_desktop.app import App
 
 
+def _identidad_en_barra_de_tareas() -> None:
+    """Que Windows agrupe la ventana bajo su propio ícono y no bajo el de Python."""
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FESAragon.Participaciones")
+    except Exception:  # otros sistemas o permisos
+        pass
+
+
 def main() -> None:
+    _identidad_en_barra_de_tareas()
     parser = argparse.ArgumentParser(description="Gestor de participaciones")
     parser.add_argument("--db", default=RUTA_POR_DEFECTO, help="ruta de la base de datos SQLite")
     args = parser.parse_args()
