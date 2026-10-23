@@ -54,13 +54,13 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `ui_desktop/dialogos_ponderaciones.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_ponderaciones.py`
   - Dependencias: T2
 
-- [ ] **T5: Asignar la ponderación de exámenes** (M)
+- [x] **T5: Asignar la ponderación de exámenes** (M)
   - Descripción: al crear el primer examen con ponderación 0 se abre el diálogo con foco en «Exámenes» y 30 % sugerido; Cancelar no bloquea; recordatorio en la franja al abrir un curso con exámenes y ponderación sin asignar.
   - Aceptación:
-    - [ ] Crear un examen en un curso sin ponderación de exámenes abre el diálogo con 30 % sugerido; guardar la asigna y cambia la final.
-    - [ ] Cancelar deja el examen creado y la franja recuerda «Los exámenes aún no pesan…».
-    - [ ] Tras guardar (aunque sea 0 %) no se vuelve a insistir; un curso con exámenes y sin asignar recibe el recordatorio al abrirse.
-    - [ ] Las pruebas de exámenes existentes siguen pasando (cancelando o aceptando el diálogo de forma explícita).
+    - [x] Crear un examen en un curso sin ponderación de exámenes abre el diálogo con 30 % sugerido; guardar la asigna y cambia la final.
+    - [x] Cancelar deja el examen creado y la franja recuerda «Los exámenes aún no pesan…».
+    - [x] Tras guardar (aunque sea 0 %) no se vuelve a insistir; un curso con exámenes y sin asignar recibe el recordatorio al abrirse.
+    - [x] Las pruebas de exámenes existentes siguen pasando (cancelando o aceptando el diálogo de forma explícita).
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_ponderaciones.py tests/test_ui_curso.py -q`
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_ponderaciones.py`, `tests/test_ui_curso.py` (ajustes)
   - Dependencias: T4

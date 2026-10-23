@@ -368,10 +368,16 @@ def test_exportar_con_error_avisa_y_deja_la_app_en_pie(curso_ui, tmp_path):
 # ---------------- modo Examen del registro rápido ----------------
 def _crear_examen_ui(curso_ui, nombre):
     """Usa el diálogo real de «＋ Nuevo»."""
+    def cancelar_ponderacion():
+        d = _dialogo(curso_ui.app)  # el primer examen abre el diálogo de ponderaciones: aquí se omite
+        if d is not None:
+            d.cancelar()
+
     def llenar():
         d = _dialogo(curso_ui.app)
         d._nombre.insert(0, nombre)
         d._aceptar()
+        curso_ui.app.after(300, cancelar_ponderacion)
 
     curso_ui.app.after(300, llenar)
     curso_ui.vista.nuevo_examen()

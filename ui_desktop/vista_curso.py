@@ -127,6 +127,8 @@ class VistaCurso(ctk.CTkFrame):
         self._construir_filtros()
         self._construir_tabla()
         self.recargar()
+        if self._servicio.ponderacion_examenes_pendiente(self.curso.id):  # cursos con exámenes ya existentes
+            self._recordar_ponderacion_examenes()
         self.after(150, self._entrada_alumno.focus_set)
 
     # ====================== construcción ======================
@@ -871,7 +873,23 @@ class VistaCurso(ctk.CTkFrame):
             self._cargar_examenes(examen.id)
             self.recargar()  # la tabla gana su columna
             self._info(f"Examen «{examen.nombre}» creado.")
+            if self._servicio.ponderacion_examenes_pendiente(self.curso.id):
+                # Los exámenes pesan 0 % hasta asignarles su ponderación: se pide ahora (no bloquea)
+                guardadas = self.ponderaciones(
+                    enfocar="examenes", sugerir_examenes=True,
+                    mensaje="Asigna la ponderación de los exámenes en la calificación final.",
+                )
+                if guardadas is None:
+                    self._recordar_ponderacion_examenes(f"Examen «{examen.nombre}» creado. ")
         self._entrada_alumno.focus_set()
+
+    def _recordar_ponderacion_examenes(self, antes: str = "") -> None:
+        self._mensaje.configure(
+            text=f"⚠  {antes}Los exámenes aún no pesan en la calificación final: asígnales su "
+                 "ponderación en «⚖ Ponderaciones».",
+            text_color=tema.COLOR_AVISO,
+        )
+        self._ocultar_acciones()
 
     def _menu_examen_abrir(self) -> None:
         """«⋯»: renombrar o eliminar el examen elegido."""
