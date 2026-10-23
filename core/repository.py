@@ -7,12 +7,15 @@ from datetime import date
 
 from .models import (
     Alumno,
+    Calificacion,
     Curso,
+    Examen,
     Participacion,
     ResumenAlumno,
     TipoInscripcion,
 )
 from .normalizacion import limpiar_nombre, normalizar
+from .promedio import promedio_examenes
 from .puntaje import total_con_piso
 
 
@@ -43,6 +46,19 @@ def _participacion(fila: sqlite3.Row) -> Participacion:
         decimas=fila["decimas"],
         fecha=date.fromisoformat(fila["fecha"]),
         nota=fila["nota"],
+    )
+
+
+def _examen(fila: sqlite3.Row) -> Examen:
+    return Examen(id=fila["id"], curso_id=fila["curso_id"], nombre=fila["nombre"])
+
+
+def _calificacion(fila: sqlite3.Row) -> Calificacion:
+    return Calificacion(
+        examen_id=fila["examen_id"],
+        alumno_id=fila["alumno_id"],
+        puntos=fila["puntos"],
+        fecha=date.fromisoformat(fila["fecha"]),
     )
 
 
@@ -208,6 +224,8 @@ class Repositorio:
 
     def resumen_curso(self, curso_id: int) -> list[ResumenAlumno]:
         decimas = self.decimas_por_alumno(curso_id)
+        examenes = [e.id for e in self.listar_examenes(curso_id)]
+        puntos = self.puntos_por_alumno(curso_id)
         filas = self._db.execute(
             "SELECT a.id, a.num_cuenta, a.nombre_completo, i.tipo,"
             "       COUNT(p.id) AS n, MAX(p.fecha) AS ultima"
@@ -226,6 +244,10 @@ class Repositorio:
                 total=total_con_piso(decimas.get(f["id"], [])),
                 n_participaciones=f["n"],
                 ultima_fecha=date.fromisoformat(f["ultima"]) if f["ultima"] else None,
+                prom_examenes=promedio_examenes(
+                    [puntos.get(f["id"], {}).get(e, 0.0) for e in examenes]
+                ),
+                calificaciones=dict(puntos.get(f["id"], {})),
             )
             for f in filas
         ]
@@ -279,3 +301,89 @@ class Repositorio:
             (curso_id, alumno_id),
         )
         return total_con_piso(f["decimas"] for f in filas)
+
+    # ---- exámenes y calificaciones --------------------------------------
+    def insertar_examen(self, examen: Examen) -> Examen:
+        cur = self._db.execute(
+            "INSERT INTO examen (curso_id, nombre, nombre_norm) VALUES (?, ?, ?)",
+            (examen.curso_id, examen.nombre, normalizar(examen.nombre)),
+        )
+        examen.id = cur.lastrowid
+        return examen
+
+    def obtener_examen(self, examen_id: int) -> Examen | None:
+        fila = self._db.execute("SELECT * FROM examen WHERE id = ?", (examen_id,)).fetchone()
+        return _examen(fila) if fila else None
+
+    def buscar_examen_por_nombre(self, curso_id: int, nombre: str) -> Examen | None:
+        fila = self._db.execute(
+            "SELECT * FROM examen WHERE curso_id = ? AND nombre_norm = ?",
+            (curso_id, normalizar(nombre)),
+        ).fetchone()
+        return _examen(fila) if fila else None
+
+    def listar_examenes(self, curso_id: int) -> list[Examen]:
+        filas = self._db.execute(
+            "SELECT * FROM examen WHERE curso_id = ? ORDER BY id", (curso_id,)
+        )
+        return [_examen(f) for f in filas]
+
+    def actualizar_examen(self, examen: Examen) -> None:
+        self._db.execute(
+            "UPDATE examen SET nombre = ?, nombre_norm = ? WHERE id = ?",
+            (examen.nombre, normalizar(examen.nombre), examen.id),
+        )
+
+    def eliminar_examen(self, examen_id: int) -> None:
+        self._db.execute("DELETE FROM examen WHERE id = ?", (examen_id,))
+
+    def contar_examenes_curso(self, curso_id: int) -> int:
+        return self._db.execute(
+            "SELECT COUNT(*) FROM examen WHERE curso_id = ?", (curso_id,)
+        ).fetchone()[0]
+
+    def contar_calificaciones_curso(self, curso_id: int) -> int:
+        return self._db.execute(
+            "SELECT COUNT(*) FROM calificacion c JOIN examen e ON e.id = c.examen_id"
+            " WHERE e.curso_id = ?",
+            (curso_id,),
+        ).fetchone()[0]
+
+    def contar_calificaciones_examen(self, examen_id: int) -> int:
+        return self._db.execute(
+            "SELECT COUNT(*) FROM calificacion WHERE examen_id = ?", (examen_id,)
+        ).fetchone()[0]
+
+    def guardar_calificacion(self, c: Calificacion) -> None:
+        """Alta o reemplazo: hay una sola calificación por alumno y examen."""
+        self._db.execute(
+            "INSERT INTO calificacion (examen_id, alumno_id, puntos, fecha) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (examen_id, alumno_id) DO UPDATE SET puntos = excluded.puntos,"
+            " fecha = excluded.fecha",
+            (c.examen_id, c.alumno_id, c.puntos, c.fecha.isoformat()),
+        )
+
+    def obtener_calificacion(self, examen_id: int, alumno_id: int) -> Calificacion | None:
+        fila = self._db.execute(
+            "SELECT * FROM calificacion WHERE examen_id = ? AND alumno_id = ?",
+            (examen_id, alumno_id),
+        ).fetchone()
+        return _calificacion(fila) if fila else None
+
+    def eliminar_calificacion(self, examen_id: int, alumno_id: int) -> None:
+        self._db.execute(
+            "DELETE FROM calificacion WHERE examen_id = ? AND alumno_id = ?",
+            (examen_id, alumno_id),
+        )
+
+    def puntos_por_alumno(self, curso_id: int) -> dict[int, dict[int, float]]:
+        """{alumno_id: {examen_id: puntos}} de los exámenes del curso (solo los capturados)."""
+        por_alumno: dict[int, dict[int, float]] = {}
+        filas = self._db.execute(
+            "SELECT c.alumno_id, c.examen_id, c.puntos FROM calificacion c"
+            " JOIN examen e ON e.id = c.examen_id WHERE e.curso_id = ?",
+            (curso_id,),
+        )
+        for f in filas:
+            por_alumno.setdefault(f["alumno_id"], {})[f["examen_id"]] = f["puntos"]
+        return por_alumno

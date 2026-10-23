@@ -13,7 +13,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from core.errores import ErrorDominio
-from core.models import Curso, ResumenAlumno, TipoInscripcion
+from core.models import Curso, Examen, ResumenAlumno, TipoInscripcion
 from core.services import ServicioParticipaciones
 
 FORMATO_FECHA_EXCEL = "DD/MM/YYYY"
@@ -61,13 +61,14 @@ def exportar_curso(
     if not filas:
         raise ErrorDominio("No hay alumnos para exportar (los oyentes están excluidos).")
 
+    examenes = servicio.listar_examenes(curso_id)
     try:
         if extension == ".csv":
-            _escribir_csv(ruta, filas, incluir_oyentes)
+            _escribir_csv(ruta, filas, examenes, incluir_oyentes)
             participaciones = sum(f.n_participaciones for f in filas)
         else:
             participaciones = _escribir_excel(
-                ruta, servicio, curso, filas, incluir_oyentes, incluir_detalle
+                ruta, servicio, curso, filas, examenes, incluir_oyentes, incluir_detalle
             )
     except PermissionError:
         raise ErrorDominio(
@@ -86,21 +87,43 @@ def _etiqueta_tipo(tipo: TipoInscripcion) -> str:
     return "Oyente" if tipo == TipoInscripcion.OYENTE else "Regular"
 
 
+# ------------------------------------------------- columnas del resumen
+def _titulos_resumen(examenes: list[Examen], con_tipo: bool) -> list[str]:
+    """Una columna por examen y el promedio (solo si el curso tiene exámenes)."""
+    return (
+        ["No.", "Cuenta", "Nombre", "Décimas"]
+        + [f"Examen - {e.nombre}" for e in examenes]
+        + (["Promedio exámenes"] if examenes else [])
+        + ["Participaciones", "Última"]
+        + (["Tipo"] if con_tipo else [])
+    )
+
+
+def _valores_resumen(
+    n: int, f: ResumenAlumno, examenes: list[Examen], con_tipo: bool, ultima
+) -> list:
+    """Misma estructura que `_titulos_resumen`. Los exámenes sin calificación valen 0 y el
+    promedio lo calculó el servicio (esta capa no calcula nada)."""
+    return (
+        [n, f.alumno.num_cuenta or "", f.alumno.nombre_completo, _numero(f.total)]
+        + [_numero(f.calificaciones.get(e.id, 0.0)) for e in examenes]
+        + ([_numero(f.prom_examenes)] if examenes else [])
+        + [f.n_participaciones, ultima]
+        + ([_etiqueta_tipo(f.tipo)] if con_tipo else [])
+    )
+
+
 # ---------------------------------------------------------------- CSV
-def _escribir_csv(ruta: Path, filas: list[ResumenAlumno], con_tipo: bool) -> None:
+def _escribir_csv(
+    ruta: Path, filas: list[ResumenAlumno], examenes: list[Examen], con_tipo: bool
+) -> None:
     # utf-8 con BOM: Excel abre bien los acentos al hacer doble clic.
     with open(ruta, "w", newline="", encoding="utf-8-sig") as archivo:
         escritor = csv.writer(archivo)
-        escritor.writerow(
-            ["No.", "Cuenta", "Nombre", "Décimas", "Participaciones", "Última"]
-            + (["Tipo"] if con_tipo else [])
-        )
+        escritor.writerow(_titulos_resumen(examenes, con_tipo))
         for n, f in enumerate(filas, start=1):
-            escritor.writerow(
-                [n, f.alumno.num_cuenta or "", f.alumno.nombre_completo, _numero(f.total),
-                 f.n_participaciones, f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else ""]
-                + ([_etiqueta_tipo(f.tipo)] if con_tipo else [])
-            )
+            ultima = f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else ""
+            escritor.writerow(_valores_resumen(n, f, examenes, con_tipo, ultima))
 
 
 # -------------------------------------------------------------- Excel
@@ -113,6 +136,7 @@ def _escribir_excel(
     servicio: ServicioParticipaciones,
     curso: Curso,
     filas: list[ResumenAlumno],
+    examenes: list[Examen],
     con_tipo: bool,
     con_detalle: bool,
 ) -> int:
@@ -128,23 +152,19 @@ def _escribir_excel(
     hoja["A4"] = f"Exportado el {datetime.now():%d/%m/%Y %H:%M}"
     hoja["A4"].font = Font(italic=True, color="666666")
 
-    titulos = ["No.", "Cuenta", "Nombre", "Décimas", "Participaciones", "Última"]
-    if con_tipo:
-        titulos.append("Tipo")
+    titulos = _titulos_resumen(examenes, con_tipo)
+    col_ultima = titulos.index("Última") + 1
     fila_titulos = 6
     _fila_encabezado(hoja, fila_titulos, titulos)
     for n, f in enumerate(filas, start=1):
         fila = fila_titulos + n
-        valores = [n, f.alumno.num_cuenta or "", f.alumno.nombre_completo, _numero(f.total),
-                   f.n_participaciones, f.ultima_fecha]
-        if con_tipo:
-            valores.append(_etiqueta_tipo(f.tipo))
+        valores = _valores_resumen(n, f, examenes, con_tipo, f.ultima_fecha)
         for col, valor in enumerate(valores, start=1):
             celda = hoja.cell(fila, col, valor)
             if col == 2:
                 celda.number_format = "@"  # la cuenta es texto, no número
                 celda.alignment = Alignment(horizontal="center")
-            elif col == 6 and f.ultima_fecha:
+            elif col == col_ultima and f.ultima_fecha:
                 celda.number_format = FORMATO_FECHA_EXCEL
                 celda.alignment = Alignment(horizontal="center")
     _ajustar(hoja, fila_titulos, len(filas))

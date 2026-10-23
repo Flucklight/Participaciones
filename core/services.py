@@ -9,12 +9,16 @@ from datetime import date
 from .errores import ErrorDominio
 from .models import (
     Alumno,
+    Calificacion,
     CoincidenciaOyente,
     Curso,
     EstadoRegistro,
+    Examen,
+    LineaExamen,
     LineaHistorial,
     ListaInscripcion,
     Participacion,
+    ResultadoCalificacion,
     ResultadoImportacion,
     ResultadoRegistro,
     ResumenAlumno,
@@ -22,6 +26,7 @@ from .models import (
     VistaPreviaImportacion,
 )
 from .normalizacion import es_numero_de_cuenta, limpiar_nombre, normalizar
+from .promedio import promedio_examenes
 from .puntaje import acumulados
 from .repository import Repositorio
 
@@ -64,10 +69,19 @@ class ServicioParticipaciones:
             self._repo.contar_participaciones_curso(curso_id),
         )
 
+    def resumen_eliminacion_examenes(self, curso_id: int) -> tuple[int, int]:
+        """(exámenes, calificaciones) que se perderían al eliminar el curso."""
+        self._curso_o_error(curso_id)
+        return (
+            self._repo.contar_examenes_curso(curso_id),
+            self._repo.contar_calificaciones_curso(curso_id),
+        )
+
     def eliminar_curso(self, curso_id: int) -> None:
         """Eliminación definitiva. La confirmación es responsabilidad de la UI.
 
-        Borra inscripciones y participaciones del curso. Los alumnos se conservan.
+        Borra inscripciones, participaciones, exámenes y calificaciones del curso. Los alumnos
+        se conservan.
         """
         self._curso_o_error(curso_id)
         with self._repo.transaccion():
@@ -207,6 +221,19 @@ class ServicioParticipaciones:
         """Registro rápido: identifica al alumno por cuenta o nombre y suma décimas."""
         self._curso_o_error(curso_id)
         decimas = self._decimas_validadas(decimas)
+        alumno, estado, candidatos = self._identificar(curso_id, consulta)
+        if alumno:
+            return self.registrar_para_alumno(curso_id, alumno.id, decimas, fecha, nota)
+        return ResultadoRegistro(estado, decimas, candidatos=candidatos)
+
+    def _identificar(
+        self, curso_id: int, consulta: str
+    ) -> tuple[Alumno | None, EstadoRegistro, list[Alumno]]:
+        """Identifica al alumno del registro rápido por cuenta o nombre (también parcial).
+
+        Devuelve (alumno, ...) si hay una única coincidencia; si no, (None, AMBIGUO o
+        NO_EXISTE, candidatos). Nunca adivina entre varias coincidencias.
+        """
         consulta = consulta.strip()
         if not consulta:
             raise ErrorDominio("Escribe un número de cuenta o un nombre.")
@@ -214,25 +241,23 @@ class ServicioParticipaciones:
         if es_numero_de_cuenta(consulta):
             alumno = self._repo.buscar_alumno_en_curso_por_cuenta(curso_id, consulta)
             if alumno:
-                return self.registrar_para_alumno(curso_id, alumno.id, decimas, fecha, nota)
+                return alumno, EstadoRegistro.GUARDADO, []
             global_ = self._repo.buscar_alumno_por_cuenta(consulta)
-            return ResultadoRegistro(
-                EstadoRegistro.NO_EXISTE, decimas, candidatos=[global_] if global_ else []
-            )
+            return None, EstadoRegistro.NO_EXISTE, [global_] if global_ else []
 
         tokens = normalizar(consulta).split()
         en_curso = self._repo.buscar_alumnos(tokens, curso_id)
         if len(en_curso) == 1:
-            return self.registrar_para_alumno(curso_id, en_curso[0].id, decimas, fecha, nota)
+            return en_curso[0], EstadoRegistro.GUARDADO, []
         if len(en_curso) > 1:
             exactos = [a for a in en_curso if normalizar(a.nombre_completo) == normalizar(consulta)]
             if len(exactos) == 1:
-                return self.registrar_para_alumno(curso_id, exactos[0].id, decimas, fecha, nota)
-            return ResultadoRegistro(EstadoRegistro.AMBIGUO, decimas, candidatos=en_curso)
+                return exactos[0], EstadoRegistro.GUARDADO, []
+            return None, EstadoRegistro.AMBIGUO, en_curso
 
         ids_curso = {a.id for a in en_curso}
         otros = [a for a in self._repo.buscar_alumnos(tokens) if a.id not in ids_curso]
-        return ResultadoRegistro(EstadoRegistro.NO_EXISTE, decimas, candidatos=otros)
+        return None, EstadoRegistro.NO_EXISTE, otros
 
     def registrar_para_alumno(
         self,
@@ -310,6 +335,163 @@ class ServicioParticipaciones:
             raise ErrorDominio("Las décimas deben ser un número.") from None
         if not math.isfinite(valor) or valor == 0:
             raise ErrorDominio("Las décimas deben ser un número distinto de cero.")
+        return valor
+
+    # ================= exámenes =================
+    def listar_examenes(self, curso_id: int) -> list[Examen]:
+        self._curso_o_error(curso_id)
+        return self._repo.listar_examenes(curso_id)
+
+    def crear_examen(self, curso_id: int, nombre: str) -> Examen:
+        self._curso_o_error(curso_id)
+        nombre = self._nombre_examen_validado(curso_id, None, nombre)
+        with self._repo.transaccion():
+            return self._repo.insertar_examen(Examen(None, curso_id, nombre))
+
+    def renombrar_examen(self, examen_id: int, nombre: str) -> Examen:
+        examen = self._examen_o_error(examen_id)
+        examen.nombre = self._nombre_examen_validado(examen.curso_id, examen_id, nombre)
+        with self._repo.transaccion():
+            self._repo.actualizar_examen(examen)
+        return examen
+
+    def resumen_eliminacion_examen(self, examen_id: int) -> int:
+        """Cuántas calificaciones se perderían al eliminar el examen."""
+        self._examen_o_error(examen_id)
+        return self._repo.contar_calificaciones_examen(examen_id)
+
+    def eliminar_examen(self, examen_id: int) -> None:
+        """Eliminación definitiva. La confirmación es responsabilidad de la UI."""
+        self._examen_o_error(examen_id)
+        with self._repo.transaccion():
+            self._repo.eliminar_examen(examen_id)
+
+    def _examen_o_error(self, examen_id: int) -> Examen:
+        examen = self._repo.obtener_examen(examen_id)
+        if examen is None:
+            raise ErrorDominio("El examen no existe.")
+        return examen
+
+    def _nombre_examen_validado(self, curso_id: int, examen_id: int | None, nombre: str) -> str:
+        nombre = " ".join(nombre.split())
+        if not nombre:
+            raise ErrorDominio("El examen necesita un nombre.")
+        existente = self._repo.buscar_examen_por_nombre(curso_id, nombre)
+        if existente and existente.id != examen_id:
+            raise ErrorDominio(f"Ya existe el examen «{existente.nombre}» en este curso.")
+        return nombre
+
+    # ================= calificaciones =================
+    def registrar_calificacion(
+        self,
+        curso_id: int,
+        examen_id: int,
+        consulta: str,
+        puntos: float,
+        fecha: date | None = None,
+        reemplazar: bool = False,
+    ) -> ResultadoCalificacion:
+        """Registro rápido de examen: identifica al alumno igual que `registrar`."""
+        self._curso_o_error(curso_id)
+        examen = self._examen_del_curso(curso_id, examen_id)
+        puntos = self._puntos_validados(puntos)
+        alumno, estado, candidatos = self._identificar(curso_id, consulta)
+        if alumno:
+            return self.registrar_calificacion_para_alumno(
+                curso_id, examen_id, alumno.id, puntos, fecha, reemplazar
+            )
+        return ResultadoCalificacion(estado, puntos, examen=examen, candidatos=candidatos)
+
+    def registrar_calificacion_para_alumno(
+        self,
+        curso_id: int,
+        examen_id: int,
+        alumno_id: int,
+        puntos: float,
+        fecha: date | None = None,
+        reemplazar: bool = False,
+    ) -> ResultadoCalificacion:
+        """Califica a un alumno ya identificado.
+
+        Si ya tenía calificación en ese examen no la cambia hasta que se repita con
+        `reemplazar=True` (la UI avisa y pide confirmar antes).
+        """
+        examen = self._examen_del_curso(curso_id, examen_id)
+        puntos = self._puntos_validados(puntos)
+        alumno = self._alumno_o_error(alumno_id)
+        if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
+            raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
+        anterior = self._repo.obtener_calificacion(examen_id, alumno_id)
+        if anterior and not reemplazar:
+            return ResultadoCalificacion(
+                EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumno, examen, anterior,
+                self.promedio_examenes_alumno(curso_id, alumno_id),
+            )
+        with self._repo.transaccion():
+            self._repo.guardar_calificacion(
+                Calificacion(examen_id, alumno_id, puntos, fecha or date.today())
+            )
+        return ResultadoCalificacion(
+            EstadoRegistro.GUARDADO, puntos, alumno, examen, anterior,
+            self.promedio_examenes_alumno(curso_id, alumno_id),
+        )
+
+    def deshacer_calificacion(
+        self, examen_id: int, alumno_id: int, anterior: Calificacion | None
+    ) -> None:
+        """Restaura la calificación previa, o la elimina si no había ninguna."""
+        with self._repo.transaccion():
+            if anterior is None:
+                self._repo.eliminar_calificacion(examen_id, alumno_id)
+            else:
+                self._repo.guardar_calificacion(anterior)
+
+    def calificacion_de(self, examen_id: int, alumno_id: int) -> Calificacion | None:
+        return self._repo.obtener_calificacion(examen_id, alumno_id)
+
+    def historial_examenes(self, curso_id: int, alumno_id: int) -> list[LineaExamen]:
+        """Todos los exámenes del curso, en orden de creación, con la calificación del alumno."""
+        self._curso_o_error(curso_id)
+        return [
+            LineaExamen(e, self._repo.obtener_calificacion(e.id, alumno_id))
+            for e in self._repo.listar_examenes(curso_id)
+        ]
+
+    def establecer_calificacion(
+        self, curso_id: int, examen_id: int, alumno_id: int, puntos: float, fecha: date
+    ) -> Calificacion:
+        """Alta o corrección desde el historial (el profesor ya eligió el examen y confirmó)."""
+        self.registrar_calificacion_para_alumno(
+            curso_id, examen_id, alumno_id, puntos, fecha, reemplazar=True
+        )
+        return self._repo.obtener_calificacion(examen_id, alumno_id)
+
+    def eliminar_calificacion(self, examen_id: int, alumno_id: int) -> None:
+        """Quita la calificación: el examen vuelve a valer 0. La confirmación es de la UI."""
+        if self._repo.obtener_calificacion(examen_id, alumno_id) is None:
+            raise ErrorDominio("Ese examen no tiene calificación.")
+        with self._repo.transaccion():
+            self._repo.eliminar_calificacion(examen_id, alumno_id)
+
+    def promedio_examenes_alumno(self, curso_id: int, alumno_id: int) -> float | None:
+        examenes = self._repo.listar_examenes(curso_id)
+        puntos = self._repo.puntos_por_alumno(curso_id).get(alumno_id, {})
+        return promedio_examenes([puntos.get(e.id, 0.0) for e in examenes])
+
+    def _examen_del_curso(self, curso_id: int, examen_id: int) -> Examen:
+        examen = self._examen_o_error(examen_id)
+        if examen.curso_id != curso_id:
+            raise ErrorDominio("El examen no pertenece a este curso.")
+        return examen
+
+    @staticmethod
+    def _puntos_validados(puntos: float) -> float:
+        try:
+            valor = float(puntos)
+        except (TypeError, ValueError):
+            raise ErrorDominio("La calificación debe ser un número.") from None
+        if not math.isfinite(valor) or valor < 0:
+            raise ErrorDominio("La calificación debe ser un número mayor o igual a 0.")
         return valor
 
     # ================= importación =================

@@ -51,6 +51,35 @@ class Participacion:
 
 
 @dataclass
+class Examen:
+    id: int | None
+    curso_id: int
+    nombre: str
+
+
+@dataclass
+class Calificacion:
+    """Calificación de un alumno en un examen (una por alumno y examen; sin tope)."""
+
+    examen_id: int
+    alumno_id: int
+    puntos: float
+    fecha: date
+
+
+@dataclass
+class LineaExamen:
+    """Un examen del curso con la calificación del alumno (None si aún no se captura)."""
+
+    examen: Examen
+    calificacion: Calificacion | None
+
+    @property
+    def puntos(self) -> float:
+        return self.calificacion.puntos if self.calificacion else 0.0
+
+
+@dataclass
 class LineaHistorial:
     """Una participación con su efecto real y el total acumulado tras ella."""
 
@@ -72,12 +101,17 @@ class ResumenAlumno:
     total: float
     n_participaciones: int
     ultima_fecha: date | None
+    # Promedio de exámenes (None si el curso no tiene exámenes); lo calcula core/promedio.py.
+    prom_examenes: float | None = None
+    # {examen_id: puntos} de los exámenes con calificación capturada (el resto vale 0).
+    calificaciones: dict[int, float] = field(default_factory=dict)
 
 
 class EstadoRegistro(str, Enum):
     GUARDADO = "guardado"
     AMBIGUO = "ambiguo"
     NO_EXISTE = "no_existe"
+    CONFIRMAR_REEMPLAZO = "confirmar_reemplazo"  # solo calificaciones: ya había una
 
 
 @dataclass
@@ -91,6 +125,19 @@ class ResultadoRegistro:
     decimas_aplicadas: float | None = None
     # AMBIGUO: coincidencias dentro del curso. NO_EXISTE: alumnos que existen en
     # otros cursos y podrían inscribirse aquí.
+    candidatos: list[Alumno] = field(default_factory=list)
+
+
+@dataclass
+class ResultadoCalificacion:
+    estado: EstadoRegistro
+    puntos: float
+    alumno: Alumno | None = None
+    examen: Examen | None = None
+    # La calificación que había antes (None si era la primera). Con CONFIRMAR_REEMPLAZO
+    # todavía no se reemplazó nada; con GUARDADO es lo que `deshacer_calificacion` restaura.
+    calificacion_anterior: Calificacion | None = None
+    promedio: float | None = None
     candidatos: list[Alumno] = field(default_factory=list)
 
 

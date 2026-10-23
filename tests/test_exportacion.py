@@ -136,3 +136,81 @@ def test_nombre_sugerido_sin_caracteres_invalidos():
     assert nombre.endswith(".xlsx") and nombre.startswith("2027-I - 1510 - ")
     assert not any(ch in nombre for ch in r'<>:"/\|?*')
     assert nombre_sugerido(c, "csv").endswith(".csv")
+
+
+# ---------------- exámenes en la exportación ----------------
+@pytest.fixture
+def curso_con_examenes(servicio, curso_con_datos):
+    """El curso anterior con dos exámenes: Abreu 42 y 70, Acosta solo en el primero (35.5)."""
+    cid = curso_con_datos.id
+    parcial = servicio.crear_examen(cid, "Parcial 1")
+    final = servicio.crear_examen(cid, "Final")
+    servicio.registrar_calificacion(cid, parcial.id, "100000001", 42)
+    servicio.registrar_calificacion(cid, final.id, "100000001", 70)
+    servicio.registrar_calificacion(cid, parcial.id, "100000002", 35.5)
+    servicio.registrar_calificacion(cid, parcial.id, "oyente", 90)
+    return curso_con_datos
+
+
+def test_excel_una_columna_por_examen_y_el_promedio(servicio, curso_con_examenes, tmp_path):
+    ruta = tmp_path / "ex.xlsx"
+    exportar_curso(servicio, curso_con_examenes.id, ruta)
+    titulos, datos = _tabla_resumen(_hoja(ruta, "Resumen"))
+    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Examen - Parcial 1", "Examen - Final",
+                       "Promedio exámenes", "Participaciones", "Última")
+    abreu = next(f for f in datos if f[1] == "100000001")
+    assert (abreu[4], abreu[5], abreu[6]) == (42, 70, 56)
+    acosta = next(f for f in datos if f[1] == "100000002")
+    assert (acosta[4], acosta[5], acosta[6]) == (35.5, 0, 17.75)  # sin capturar vale 0 y cuenta
+    garcia = next(f for f in datos if f[1] == "100000003")
+    assert (garcia[4], garcia[5], garcia[6]) == (0, 0, 0)
+    assert all(isinstance(v, (int, float)) for v in (abreu[4], abreu[5], abreu[6]))  # números, no texto
+
+
+def test_excel_el_promedio_coincide_con_el_del_resumen(servicio, curso_con_examenes, tmp_path):
+    ruta = tmp_path / "ex.xlsx"
+    exportar_curso(servicio, curso_con_examenes.id, ruta)
+    _t, datos = _tabla_resumen(_hoja(ruta, "Resumen"))
+    por_cuenta = {f.alumno.num_cuenta: f for f in servicio.resumen_curso(curso_con_examenes.id)}
+    for fila in datos:
+        assert fila[6] == pytest.approx(por_cuenta[fila[1]].prom_examenes)
+
+
+def test_excel_con_examenes_la_fecha_y_la_cuenta_conservan_su_formato(servicio, curso_con_examenes, tmp_path):
+    ruta = tmp_path / "ex.xlsx"
+    exportar_curso(servicio, curso_con_examenes.id, ruta)
+    hoja = _hoja(ruta, "Resumen")
+    fila = next(r for r in hoja.iter_rows(min_row=7) if r[1].value == "100000001")
+    assert isinstance(fila[1].value, str) and fila[1].number_format == "@"
+    assert fila[8].value.date() == date.today() and fila[8].number_format == "DD/MM/YYYY"
+
+
+def test_excel_oyentes_excluidos_por_defecto_e_incluidos_con_tipo(servicio, curso_con_examenes, tmp_path):
+    _t, datos = _tabla_resumen(_hoja(_exportar(servicio, curso_con_examenes, tmp_path / "a.xlsx"), "Resumen"))
+    assert all("OYENTE" not in f[2] for f in datos)
+    titulos, datos = _tabla_resumen(_hoja(
+        _exportar(servicio, curso_con_examenes, tmp_path / "b.xlsx", incluir_oyentes=True), "Resumen"))
+    assert titulos[-1] == "Tipo"
+    oyente = next(f for f in datos if "OYENTE" in f[2])
+    assert (oyente[4], oyente[5], oyente[6], oyente[-1]) == (90, 0, 45, "Oyente")
+
+
+def test_csv_con_examenes(servicio, curso_con_examenes, tmp_path):
+    ruta = _exportar(servicio, curso_con_examenes, tmp_path / "ex.csv")
+    with open(ruta, newline="", encoding="utf-8-sig") as f:
+        filas = list(csv.reader(f))
+    assert filas[0] == ["No.", "Cuenta", "Nombre", "Décimas", "Examen - Parcial 1", "Examen - Final",
+                        "Promedio exámenes", "Participaciones", "Última"]
+    abreu = next(f for f in filas[1:] if f[1] == "100000001")
+    assert abreu[4:7] == ["42", "70", "56"]
+    assert next(f for f in filas[1:] if f[1] == "100000002")[4:7] == ["35.5", "0", "17.75"]
+
+
+def test_curso_sin_examenes_exporta_las_mismas_columnas_de_siempre(servicio, curso_con_datos, tmp_path):
+    titulos, _d = _tabla_resumen(_hoja(_exportar(servicio, curso_con_datos, tmp_path / "s.xlsx"), "Resumen"))
+    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Participaciones", "Última")
+
+
+def _exportar(servicio, curso, ruta, **opciones):
+    exportar_curso(servicio, curso.id, ruta, **opciones)
+    return ruta

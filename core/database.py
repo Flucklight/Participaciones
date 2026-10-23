@@ -45,6 +45,22 @@ CREATE TABLE IF NOT EXISTS participacion (
 );
 CREATE INDEX IF NOT EXISTS idx_participacion_curso_alumno
     ON participacion(curso_id, alumno_id);
+
+CREATE TABLE IF NOT EXISTS examen (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    curso_id    INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
+    nombre      TEXT NOT NULL,
+    nombre_norm TEXT NOT NULL,
+    UNIQUE (curso_id, nombre_norm)
+);
+
+CREATE TABLE IF NOT EXISTS calificacion (
+    examen_id INTEGER NOT NULL REFERENCES examen(id) ON DELETE CASCADE,
+    alumno_id INTEGER NOT NULL REFERENCES alumno(id) ON DELETE CASCADE,
+    puntos    REAL NOT NULL,
+    fecha     TEXT NOT NULL,
+    PRIMARY KEY (examen_id, alumno_id)
+);
 """
 
 

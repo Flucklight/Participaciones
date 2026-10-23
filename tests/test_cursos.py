@@ -51,3 +51,21 @@ def test_eliminar_borra_curso_y_participaciones_pero_conserva_alumnos(servicio, 
 def test_eliminar_curso_inexistente(servicio):
     with pytest.raises(ErrorDominio):
         servicio.eliminar_curso(999)
+
+
+def test_eliminar_curso_borra_sus_examenes_y_calificaciones(servicio, curso):
+    alumno = servicio.crear_alumno_en_curso(curso.id, "Oyente Uno")
+    parcial = servicio.crear_examen(curso.id, "Parcial 1")
+    servicio.crear_examen(curso.id, "Final")
+    servicio.registrar_calificacion_para_alumno(curso.id, parcial.id, alumno.id, 90)
+    assert servicio.resumen_eliminacion_examenes(curso.id) == (2, 1)
+    servicio.eliminar_curso(curso.id)
+    assert servicio._repo.listar_examenes(curso.id) == []
+    assert servicio._repo.contar_calificaciones_examen(parcial.id) == 0
+    assert servicio.obtener_alumno(alumno.id) is not None  # el alumno se conserva
+
+
+def test_resumen_eliminacion_examenes_sin_examenes(servicio, curso):
+    assert servicio.resumen_eliminacion_examenes(curso.id) == (0, 0)
+    with pytest.raises(ErrorDominio):
+        servicio.resumen_eliminacion_examenes(999)
