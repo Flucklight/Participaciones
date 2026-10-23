@@ -57,16 +57,16 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `ui_desktop/dialogos_tareas.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_curso.py`
   - Dependencias: T3
 
-- [ ] **T5: Deshacer importación, docs y versión** (S)
+- [x] **T5: Deshacer importación, docs y versión** (S)
   - Descripción: franja «✓ Tareas importadas: N actualizadas, M omitidas» con «Deshacer importación»; `CLAUDE.md` (pantalla), `README.md`, versión 1.3.0.
   - Aceptación:
-    - [ ] Deshacer restaura la tabla; otra captura o salir de la pantalla la deshabilita.
-    - [ ] Documentación coherente con R15.
+    - [x] Deshacer restaura la tabla; otra captura o salir de la pantalla la deshabilita.
+    - [x] Documentación coherente con R15.
   - Verificación: suite completa; `scripts\construir_exe.ps1`.
   - Archivos: `ui_desktop/vista_curso.py`, `CLAUDE.md`, `README.md`, `core/version.py`, `tests/test_ui_curso.py`
   - Dependencias: T4
 
 ### Checkpoint 2: Completo
-- [ ] Suite completa en verde; ejecutable generado.
+- [x] Suite completa en verde (371 pasadas, 3 omitidas); ejecutable 1.3.0 generado.
 - [ ] Flujo manual con las muestras reales: elegir columna, revisar dudosas, aplicar, deshacer.
 - [ ] Listo para revisión y commit.

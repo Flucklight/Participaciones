@@ -207,3 +207,50 @@ def test_sin_cambios_que_aplicar_el_boton_esta_deshabilitado(curso_ui, tmp_path)
                   aceptar=False)
     assert vistos["estado"] == "disabled" and vistos["filas"][0][0] == "Omitida"
     assert len(curso_ui.srv.resumen_curso(curso_ui.curso.id)) == 4  # no se creó ningún alumno
+
+
+# ---------------- deshacer la importación ----------------
+def _boton_deshacer_visible(v):
+    return v._boton_deshacer.winfo_manager() == "pack"
+
+
+def test_tras_importar_se_ofrece_deshacer_y_restaura_todo(curso_ui, tmp_path):
+    v = curso_ui.vista
+    curso_ui.srv.registrar_tareas(curso_ui.curso.id, "100000001", 40)  # ya tenía una
+    antes = _tareas(curso_ui)
+    _importar_con(curso_ui, crear_excel_plataforma(tmp_path / "p.xlsx", ALUMNOS))
+    assert _tareas(curso_ui)["100000001"] == 90 and _boton_deshacer_visible(v)
+    v.deshacer()
+    assert _tareas(curso_ui) == antes  # 40 vuelve y la de Acosta (nueva) se elimina
+    assert "Se deshizo la importación" in _texto_franja(v) and "2" in _texto_franja(v)
+    assert not _boton_deshacer_visible(v)
+
+
+def test_deshacer_importacion_una_sola_vez(curso_ui, tmp_path):
+    v = curso_ui.vista
+    _importar_con(curso_ui, crear_excel_plataforma(tmp_path / "p.xlsx", ALUMNOS))
+    v.deshacer()
+    curso_ui.srv.registrar_tareas(curso_ui.curso.id, "100000001", 33)
+    v.deshacer()  # no hay nada que deshacer: no debe volver a tocar los datos
+    assert _tareas(curso_ui)["100000001"] == 33
+
+
+def test_otra_captura_reemplaza_lo_deshacible(curso_ui, tmp_path):
+    v = curso_ui.vista
+    _importar_con(curso_ui, crear_excel_plataforma(tmp_path / "p.xlsx", ALUMNOS))
+    v._entrada_alumno.insert(0, "100000003")
+    v._entrada_decimas.insert(0, "5")
+    v.guardar()
+    v.deshacer()  # deshace la participación, no la importación
+    assert _tareas(curso_ui)["100000001"] == 90
+    assert {r.alumno.num_cuenta: r.total for r in curso_ui.srv.resumen_curso(curso_ui.curso.id)}["100000003"] == 0
+
+
+def test_deshacer_solo_toca_lo_que_cambio_la_importacion(curso_ui, tmp_path):
+    v = curso_ui.vista
+    curso_ui.srv.registrar_tareas(curso_ui.curso.id, "100000001", 90)  # igual a lo que trae el archivo
+    _importar_con(curso_ui, crear_excel_plataforma(tmp_path / "p.xlsx", ALUMNOS))
+    assert "1 actualizadas" in _texto_franja(v)
+    v.deshacer()
+    assert _tareas(curso_ui)["100000001"] == 90 and _tareas(curso_ui)["100000002"] == 0
+    assert "1 calificaciones" in _texto_franja(v)

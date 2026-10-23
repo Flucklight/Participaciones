@@ -64,6 +64,8 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 
 **Exámenes y tareas.** El selector `[Participación | Examen | Tareas]` (tecla **F2**, recorre los tres modos) cambia el registro rápido a calificaciones: eliges el examen (o creas uno con «＋ Nuevo»; «⋯» renombra o elimina), escribes cuenta o nombre y la calificación. Si el alumno ya tenía nota, la app avisa «Ya tiene X; se cambiará a Y» y pide confirmar; «Deshacer» la restaura. La tabla gana una columna «Examen - <nombre>» por examen. En modo **Tareas** capturas la calificación de tareas de cada alumno (con la misma advertencia de reemplazo y «Deshacer»); la tabla muestra la columna «Tareas».
 
+**Importar tareas desde un archivo.** Con «⬆ Importar tareas» eliges el `.xlsx` o `.csv` que descargas de la otra plataforma. La app reconoce a cada alumno por su nombre (o por número de cuenta si el archivo trae una columna «Cuenta») y te muestra una vista previa: qué columna importar (por omisión la del promedio), quién cambia («antes → después»), qué coincidencias son dudosas (solo se aplican si las marcas) y qué filas se omiten. Nunca crea alumnos ni toca a quienes el archivo no menciona. Al aplicar, puedes **deshacer la importación** completa.
+
 ### Exportar
 Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Tareas, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Participaciones, Última, y hoja opcional «Participaciones» con el detalle) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
 

@@ -91,6 +91,8 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_calificacion: tuple[int, int, Calificacion | None] | None = None
         # Última calificación de tareas guardada: (alumno_id, calificación previa) para deshacer.
         self._ultima_tareas: tuple[int, CalificacionTareas | None] | None = None
+        # Última importación de tareas: {alumno_id: calificación previa} para deshacerla completa.
+        self._ultima_importacion: dict[int, CalificacionTareas | None] | None = None
 
         self._construir_encabezado()
         self._construir_registro()
@@ -573,6 +575,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = resultado.participacion.id
         self._ultima_calificacion = None
         self._ultima_tareas = None
+        self._ultima_importacion = None
         nuevo = "  (alumno agregado)" if alumno_nuevo else ""
         aplicadas = resultado.decimas_aplicadas
         if aplicadas is not None and abs(aplicadas - resultado.decimas) > 1e-9:
@@ -594,6 +597,9 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.focus_set()
 
     def deshacer(self) -> None:
+        if self._ultima_importacion is not None:
+            self._deshacer_importacion()
+            return
         if self._ultima_tareas is not None:
             self._deshacer_tareas()
             return
@@ -840,6 +846,7 @@ class VistaCurso(ctk.CTkFrame):
         )
         self._ultimo_registro = None
         self._ultima_tareas = None
+        self._ultima_importacion = None
         self._ultima_calificacion = (
             resultado.examen.id, resultado.alumno.id, resultado.calificacion_anterior
         )
@@ -966,6 +973,7 @@ class VistaCurso(ctk.CTkFrame):
         )
         self._ultimo_registro = None
         self._ultima_calificacion = None
+        self._ultima_importacion = None
         self._ultima_tareas = (resultado.alumno.id, resultado.anterior)
         self._pendiente = None
         self._elegido = None
@@ -989,6 +997,18 @@ class VistaCurso(ctk.CTkFrame):
         self._info(
             "Se deshizo la calificación de tareas" + (f" de {alumno.nombre_completo}." if alumno else ".")
         )
+        self._entrada_alumno.focus_set()
+
+    def _deshacer_importacion(self) -> None:
+        anteriores = self._ultima_importacion
+        self._ultima_importacion = None
+        try:
+            self._servicio.deshacer_importacion_tareas(self.curso.id, anteriores)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        self.recargar()
+        self._info(f"Se deshizo la importación: {len(anteriores)} calificaciones de tareas restauradas.")
         self._entrada_alumno.focus_set()
 
     # ====================== alumnos ======================
@@ -1036,11 +1056,12 @@ class VistaCurso(ctk.CTkFrame):
             return
         self._pendiente = None
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None  # lo anterior ya no se deshace
+        self._ultima_importacion = resultado.anteriores or None
         self.recargar()
         self._exito(
             f"Tareas importadas: {resultado.actualizadas} actualizadas, "
             f"{resultado.omitidas} omitidas.",
-            deshacible=False,
+            deshacible=bool(resultado.anteriores),
         )
         self._entrada_alumno.focus_set()
 
