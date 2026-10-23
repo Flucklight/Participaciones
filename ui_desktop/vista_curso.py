@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import replace
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
 
+from core.calificacion_final import SUGERIDA_EXAMENES, redondear, sobre_diez
 from core.errores import ErrorDominio
 from core.models import (
     Alumno,
@@ -36,6 +38,7 @@ from .dialogos_curso import (
     DialogoExamen,
     DialogoExportar,
 )
+from .dialogos_ponderaciones import DialogoPonderaciones
 from .dialogos_tareas import DialogoImportarTareas
 from .formato import formatear_decimas, leer_decimas, titulo_legible
 from .tabla import ESTILO, configurar_estilo
@@ -79,6 +82,8 @@ COLUMNAS = (
     ("ultima", "Última", 100, "center"),
 )
 COLUMNA_EQUIPO = ("equipo", "Equipo", 90, "center")  # solo en el modo Proyecto
+# Calificación final (R18): siempre al final, después de los exámenes y antes de «Última».
+COLUMNAS_FINAL = (("final", "Final", 80, "center"), ("final10", "Final /10", 95, "center"))
 
 
 class VistaCurso(ctk.CTkFrame):
@@ -145,6 +150,7 @@ class VistaCurso(ctk.CTkFrame):
             ("⬇  Exportar", self.exportar),
             ("＋  Agregar alumno", self.agregar_alumno),
             ("⬆  Importar tareas", self.importar_tareas),
+            ("⚖  Ponderaciones", self.ponderaciones),
         ):
             ctk.CTkButton(
                 titulo, text=texto, height=34, command=comando,
@@ -343,13 +349,13 @@ class VistaCurso(ctk.CTkFrame):
 
     # ====================== datos / tabla ======================
     def _aplicar_columnas(self) -> None:
-        """Columnas fijas más una por examen («Examen - <nombre>»), antes de «Última»."""
+        """Columnas fijas, una por examen («Examen - <nombre>») y las de calificación final, antes de «Última»."""
         examenes = tuple(
             (f"examen_{e.id}", f"Examen - {e.nombre}", max(120, 7 * (len(e.nombre) + 9) + 40), "center")
             for e in self._examenes
         )
         fijas = COLUMNAS[:3] + ((COLUMNA_EQUIPO,) if self._modo == "proyecto" else ()) + COLUMNAS[3:-1]
-        self._columnas = fijas + examenes + COLUMNAS[-1:]
+        self._columnas = fijas + examenes + COLUMNAS_FINAL + COLUMNAS[-1:]
         self._tabla.configure(columns=[c[0] for c in self._columnas])
         for clave, titulo, ancho, alineacion in self._columnas:
             self._tabla.heading(clave, text=titulo, anchor=alineacion,
@@ -393,6 +399,8 @@ class VistaCurso(ctk.CTkFrame):
             "total": lambda f: f.total,
             "tareas": lambda f: f.tareas,
             "proyecto": lambda f: f.proyecto,
+            "final": lambda f: f.final,
+            "final10": lambda f: f.final,
             "equipo": lambda f: f.equipo or 0,
             "ultima": lambda f: (f.ultima_fecha is None, f.ultima_fecha or 0),
         }
@@ -423,6 +431,8 @@ class VistaCurso(ctk.CTkFrame):
             "total": formatear_decimas(f.total),
             "tareas": formatear_decimas(f.tareas),
             "proyecto": formatear_decimas(f.proyecto),
+            "final": str(redondear(f.final)),
+            "final10": f"{sobre_diez(f.final):.1f}",
             "ultima": f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else "—",
             **{f"examen_{e.id}": formatear_decimas(f.calificaciones.get(e.id, 0.0)) for e in self._examenes},
         }
@@ -525,7 +535,7 @@ class VistaCurso(ctk.CTkFrame):
             self._app.abrir_historial(self.curso.id, int(iid))
 
     def _ordenar_por(self, clave: str) -> None:
-        descendente = (not self._orden[1]) if self._orden[0] == clave else (clave in ("total", "tareas", "proyecto", "ultima") or clave.startswith("examen_"))
+        descendente = (not self._orden[1]) if self._orden[0] == clave else (clave in ("total", "tareas", "proyecto", "final", "final10", "ultima") or clave.startswith("examen_"))
         self._orden = (clave, descendente)
         self._dibujar_tabla()
 
@@ -1650,6 +1660,34 @@ class VistaCurso(ctk.CTkFrame):
             self.recargar()
             self._resaltar(alumno.id)
             self._exito(f"{alumno.nombre_completo} agregado al curso.", deshacible=False)
+
+    # ====================== ponderaciones de la calificación final ======================
+    def ponderaciones(self, enfocar: str = "participaciones", sugerir_examenes: bool = False, mensaje: str = ""):
+        """Diálogo de ponderaciones del curso (R18). Devuelve las guardadas, o None si se cancela.
+
+        `sugerir_examenes` precarga el 30 % sugerido en «Exámenes» (al asignarla por primera vez).
+        """
+        curso_id = self.curso.id
+        actuales = self._servicio.ponderaciones_de(curso_id)
+        if sugerir_examenes:
+            actuales = replace(actuales, examenes=SUGERIDA_EXAMENES)
+        guardadas = DialogoPonderaciones(
+            self, actuales,
+            lambda p, e, t, pr: self._servicio.establecer_ponderaciones(curso_id, p, e, t, pr),
+            enfocar, mensaje,
+        ).mostrar()
+        if guardadas:
+            self.recargar()  # la calificación final de todos cambia
+            partes = (f"participaciones {formatear_decimas(guardadas.participaciones)} %",
+                      f"exámenes {formatear_decimas(guardadas.examenes)} %",
+                      f"tareas {formatear_decimas(guardadas.tareas)} %",
+                      f"proyecto {formatear_decimas(guardadas.proyecto)} %")
+            self._exito(
+                f"Ponderaciones guardadas: {' · '.join(partes)} (suma {formatear_decimas(guardadas.suma)} %).",
+                deshacible=False,
+            )
+        self._entrada_alumno.focus_set()
+        return guardadas
 
     # ====================== importar tareas ======================
     def importar_tareas(self) -> None:

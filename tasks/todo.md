@@ -34,22 +34,22 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 2: Pantalla Curso
 
-- [ ] **T3: Columnas «Final» y «Final /10»** (S)
+- [x] **T3: Columnas «Final» y «Final /10»** (S)
   - Descripción: dos columnas centradas después de las de examen y antes de «Última», visibles en todos los modos, ordenables por el valor exacto.
   - Aceptación:
-    - [ ] Muestran el entero (81) y el decimal (8.1); sin captura la final con las ponderaciones por omisión es la que corresponda (p. ej. 0).
-    - [ ] Ordenan de mayor a menor primero y no rompen el modo Proyecto (agrupado por equipo).
-    - [ ] Los oyentes también las tienen.
+    - [x] Muestran el entero (81) y el decimal (8.1); sin captura la final con las ponderaciones por omisión es la que corresponda (p. ej. 0).
+    - [x] Ordenan de mayor a menor primero y no rompen el modo Proyecto (agrupado por equipo).
+    - [x] Los oyentes también las tienen.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_curso.py tests/test_ui_proyecto_vistas.py -q`
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_curso.py`
   - Dependencias: T2
 
-- [ ] **T4: Diálogo y botón «⚖ Ponderaciones»** (M)
+- [x] **T4: Diálogo y botón «⚖ Ponderaciones»** (M)
   - Descripción: botón en el encabezado del curso y diálogo con los cuatro porcentajes, suma en vivo («Suma: 110 % · 10 % de puntos extra» / «faltan 10 %»), «Restablecer», validaciones dentro del diálogo; al guardar se recarga la tabla.
   - Aceptación:
-    - [ ] Abre con los valores actuales; cambiar un valor actualiza la suma al instante con el mensaje correcto.
-    - [ ] Valores inválidos se avisan dentro del diálogo; «Cancelar» no guarda; «Restablecer» vuelve a 10 / 0 / 20 / 40.
-    - [ ] Guardar recalcula las columnas «Final» de inmediato y la franja lo confirma.
+    - [x] Abre con los valores actuales; cambiar un valor actualiza la suma al instante con el mensaje correcto.
+    - [x] Valores inválidos se avisan dentro del diálogo; «Cancelar» no guarda; «Restablecer» vuelve a 10 / 0 / 20 / 40.
+    - [x] Guardar recalcula las columnas «Final» de inmediato y la franja lo confirma.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_ponderaciones.py -q`
   - Archivos: `ui_desktop/dialogos_ponderaciones.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_ponderaciones.py`
   - Dependencias: T2
