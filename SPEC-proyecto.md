@@ -1,6 +1,6 @@
 # Spec: Calificación del proyecto final (módulo `proyecto`)
 
-Estado: **BORRADOR; las decisiones de diseño ya las respondió la persona, falta la aprobación explícita** (sin código ni cambios a `CLAUDE.md` todavía). Índice: `MAPA-proyecto.md`. Depende de `SPEC-equipos.md` (módulo `equipos`): solo **lee** quiénes son los miembros de un equipo.
+Estado: **BORRADOR; la persona ya aprobó los supuestos 6 y 7 (sintaxis «equipo N» y «Usar equipo N»), el 4 (la nota no se sincroniza) y la columna «Equipo» en la exportación; falta la aprobación final** (sin código ni cambios a `CLAUDE.md` todavía). Índice: `MAPA-proyecto.md`. Depende de `SPEC-equipos.md` (módulo `equipos`): solo **lee** quiénes son los miembros de un equipo.
 
 ## Objetivo
 

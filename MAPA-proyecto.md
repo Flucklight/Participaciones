@@ -1,6 +1,6 @@
 # Mapa de capacidades: proyecto final por equipos
 
-Estado: **la persona eligió dividirlo en dos módulos** (falta su visto bueno al mapa completo junto con las specs). Índice de las specs de esta iniciativa.
+Estado: **dos módulos, aprobado por la persona** (las specs incorporan sus respuestas y esperan su aprobación final). Índice de las specs de esta iniciativa.
 
 El proyecto final se califica **por equipo**, pero la calificación se guarda **por alumno** (una por alumno y curso, sin tope, ≥ 0): calificar a un equipo la copia a todos sus miembros, y después se puede corregir a cada uno por separado. Los equipos se forman y se separan solo en la sección «Proyecto».
 
