@@ -15,20 +15,20 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `importers/calificaciones_plataforma.py`, `core/models.py`, `tests/conftest.py`, `tests/test_importar_tareas.py`
   - Dependencias: ninguna
 
-- [ ] **T2: Servicio de vista previa y coincidencia por nombre** (M)
+- [x] **T2: Servicio de vista previa y coincidencia por nombre** (M)
   - Descripción: documentar R15 en `CLAUDE.md`; `previsualizar_importacion_tareas(curso_id, archivo, columna)` clasifica filas (aplicar / dudosa / omitida) y cuenta cambian, quedan igual y no tocados. No escribe.
   - Aceptación:
-    - [ ] Exacta única aplica; por palabras única es dudosa; varias o ninguna se omite; nombre repetido en el archivo se omite.
-    - [ ] Cuenta en el archivo, si existe, tiene prioridad; nunca se crean alumnos.
-    - [ ] Valor negativo o no numérico se omite con motivo; celda vacía no cambia lo existente.
-    - [ ] Verificación de grupo si el archivo lo trae.
-    - [ ] No guarda nada.
+    - [x] Exacta única aplica; por palabras única es dudosa; varias o ninguna se omite; nombre repetido en el archivo se omite.
+    - [x] Cuenta en el archivo, si existe, tiene prioridad; nunca se crean alumnos.
+    - [x] Valor negativo o no numérico se omite con motivo; celda vacía no cambia lo existente.
+    - [x] Verificación de grupo si el archivo lo trae.
+    - [x] No guarda nada.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_importar_tareas.py -q`
   - Archivos: `core/services.py`, `core/repository.py`, `core/models.py`, `CLAUDE.md`, `tests/test_importar_tareas.py`
   - Dependencias: T1
 
 ### Checkpoint 1: Lector y vista previa
-- [ ] Suite completa en verde; con `PLATAFORMA_REAL` y `PLATAFORMA_REAL_CSV` las muestras reales también.
+- [x] Suite completa en verde (343 pasadas, 3 omitidas); con `PLATAFORMA_REAL` y `PLATAFORMA_REAL_CSV` las muestras reales también.
 - [ ] Revisión con la persona antes de seguir a guardar y a la UI.
 
 ## Fase 2: Guardar y deshacer

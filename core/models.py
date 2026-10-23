@@ -246,3 +246,58 @@ class ArchivoCalificaciones:
     def columna_sugerida(self) -> ColumnaCalificaciones:
         """La numérica de más a la derecha (en las plataformas, el promedio)."""
         return self.columnas[-1]
+
+
+class EstadoLinea(str, Enum):
+    APLICAR = "aplicar"  # coincidencia clara: se aplica al confirmar
+    DUDOSA = "dudosa"  # coincidencia por palabras: solo se aplica si la persona la confirma
+    OMITIDA = "omitida"  # no se aplica (sin coincidencia, ambigua o valor inválido)
+
+
+@dataclass
+class LineaImportacion:
+    """Qué pasaría con una fila del archivo al importar."""
+
+    fila: FilaCalificacion
+    estado: EstadoLinea
+    alumno: Alumno | None = None  # el alumno del curso al que corresponde (si se encontró)
+    puntos: float | None = None  # valor a guardar (APLICAR y DUDOSA)
+    anterior: float | None = None  # calificación de tareas que ya tenía (None si no tenía)
+    motivo: str = ""  # por qué se omitió o por qué es dudosa
+
+    @property
+    def cambia(self) -> bool:
+        return self.puntos is not None and self.puntos != self.anterior
+
+
+@dataclass
+class VistaPreviaTareas:
+    """Resultado de revisar el archivo contra el curso; no guarda nada."""
+
+    columna: ColumnaCalificaciones
+    lineas: list[LineaImportacion]
+    sin_aparecer: list[Alumno]  # alumnos del curso que el archivo no menciona (no se tocan)
+    advertencia_grupo: str = ""  # "" si coincide o el archivo no trae grupo
+
+    def _con(self, estado: EstadoLinea) -> list[LineaImportacion]:
+        return [l for l in self.lineas if l.estado == estado]
+
+    @property
+    def claras(self) -> list[LineaImportacion]:
+        return self._con(EstadoLinea.APLICAR)
+
+    @property
+    def dudosas(self) -> list[LineaImportacion]:
+        return self._con(EstadoLinea.DUDOSA)
+
+    @property
+    def omitidas(self) -> list[LineaImportacion]:
+        return self._con(EstadoLinea.OMITIDA)
+
+    @property
+    def cambian(self) -> int:
+        return sum(1 for l in self.claras if l.cambia)
+
+    @property
+    def iguales(self) -> int:
+        return sum(1 for l in self.claras if not l.cambia)

@@ -4,19 +4,23 @@ from __future__ import annotations
 
 import math
 import sqlite3
+from collections import Counter
 from datetime import date
 
 from .errores import ErrorDominio
 from .models import (
     Alumno,
+    ArchivoCalificaciones,
     Calificacion,
     CalificacionTareas,
     CoincidenciaOyente,
     Curso,
+    EstadoLinea,
     EstadoRegistro,
     Examen,
     LineaExamen,
     LineaHistorial,
+    LineaImportacion,
     ListaInscripcion,
     Participacion,
     ResultadoCalificacion,
@@ -26,6 +30,7 @@ from .models import (
     ResumenAlumno,
     TipoInscripcion,
     VistaPreviaImportacion,
+    VistaPreviaTareas,
 )
 from .normalizacion import es_numero_de_cuenta, limpiar_nombre, normalizar
 from .promedio import promedio_examenes
@@ -638,3 +643,126 @@ class ServicioParticipaciones:
         oyente.num_cuenta = num_cuenta
         self._repo.actualizar_alumno(oyente)
         return oyente
+
+    # ================= importar calificaciones de tareas =================
+    def previsualizar_importacion_tareas(
+        self, curso_id: int, archivo: ArchivoCalificaciones, clave_columna: str | None = None
+    ) -> VistaPreviaTareas:
+        """Dice qué pasaría al importar la columna elegida del archivo. No guarda nada.
+
+        Identifica a cada fila con un alumno del curso (cuenta si el archivo la trae; si no, nombre)
+        y nunca crea alumnos: exacta única → se aplica; por palabras única → dudosa (solo con
+        confirmación); varias o ninguna → se omite.
+        """
+        curso = self._curso_o_error(curso_id)
+        columna = self._columna_de_archivo(archivo, clave_columna)
+        inscritos = [r.alumno for r in self._repo.resumen_curso(curso_id)]
+        actuales = self._repo.tareas_por_alumno(curso_id)
+        repetidos = {
+            nombre
+            for nombre, veces in Counter(normalizar(f.nombre_completo) for f in archivo.filas).items()
+            if veces > 1
+        }
+        lineas = [
+            self._linea_importacion(curso_id, f, columna, inscritos, actuales, repetidos)
+            for f in archivo.filas
+        ]
+        self._omitir_alumnos_repetidos(lineas)
+        mencionados = {l.alumno.id for l in lineas if l.alumno}
+        return VistaPreviaTareas(
+            columna, lineas, [a for a in inscritos if a.id not in mencionados],
+            self._advertencia_grupo(curso, archivo),
+        )
+
+    @staticmethod
+    def _columna_de_archivo(archivo: ArchivoCalificaciones, clave: str | None):
+        if clave is None:
+            return archivo.columna_sugerida
+        for columna in archivo.columnas:
+            if columna.clave == clave:
+                return columna
+        raise ErrorDominio(f"La columna «{clave}» no existe en el archivo.")
+
+    def _linea_importacion(
+        self, curso_id, fila, columna, inscritos, actuales, repetidos
+    ) -> LineaImportacion:
+        if normalizar(fila.nombre_completo) in repetidos:
+            return LineaImportacion(
+                fila, EstadoLinea.OMITIDA, motivo="El nombre está repetido en el archivo."
+            )
+        alumno, dudosa, motivo = self._coincidencia_por_nombre(curso_id, fila, inscritos)
+        if alumno is None:
+            return LineaImportacion(fila, EstadoLinea.OMITIDA, motivo=motivo)
+        anterior = actuales.get(alumno.id)
+        valor = fila.valores.get(columna.clave)
+        if valor is None:
+            motivo = "Sin dato en la columna elegida."
+        elif isinstance(valor, str):
+            motivo = f"El valor «{valor}» no es un número."
+        else:
+            try:
+                puntos = self._puntos_validados(valor)
+            except ErrorDominio as error:
+                motivo = str(error)
+            else:
+                estado = EstadoLinea.DUDOSA if dudosa else EstadoLinea.APLICAR
+                return LineaImportacion(fila, estado, alumno, puntos, anterior, motivo)
+        return LineaImportacion(fila, EstadoLinea.OMITIDA, alumno, None, anterior, motivo)
+
+    def _coincidencia_por_nombre(self, curso_id, fila, inscritos):
+        """(alumno | None, es_dudosa, motivo) para una fila del archivo."""
+        if fila.cuenta:
+            alumno = self._repo.buscar_alumno_en_curso_por_cuenta(curso_id, fila.cuenta)
+            if alumno:
+                return alumno, False, ""
+        nombre = normalizar(fila.nombre_completo)
+        exactos = [a for a in inscritos if normalizar(a.nombre_completo) == nombre]
+        if len(exactos) == 1:
+            return exactos[0], False, ""
+        if len(exactos) > 1:
+            return None, False, "Varios alumnos del curso tienen ese nombre."
+        palabras = set(nombre.split())
+        parecidos = []
+        for a in inscritos:
+            otras = set(normalizar(a.nombre_completo).split())
+            if palabras and otras and (palabras <= otras or otras <= palabras):
+                parecidos.append(a)
+        if len(parecidos) == 1:
+            return parecidos[0], True, f"Coincide por palabras con {parecidos[0].nombre_completo}."
+        if parecidos:
+            nombres = ", ".join(a.nombre_completo for a in parecidos)
+            return None, False, f"Varios alumnos del curso podrían ser: {nombres}."
+        return None, False, "No coincide con ningún alumno del curso."
+
+    @staticmethod
+    def _omitir_alumnos_repetidos(lineas: list[LineaImportacion]) -> None:
+        """Si varias filas apuntan al mismo alumno solo sobrevive una coincidencia exacta única."""
+        por_alumno: dict[int, list[LineaImportacion]] = {}
+        for linea in lineas:
+            if linea.estado != EstadoLinea.OMITIDA:
+                por_alumno.setdefault(linea.alumno.id, []).append(linea)
+        for grupo in por_alumno.values():
+            if len(grupo) < 2:
+                continue
+            exactas = [l for l in grupo if l.estado == EstadoLinea.APLICAR]
+            for linea in grupo:
+                if len(exactas) == 1 and linea is exactas[0]:
+                    continue
+                linea.estado = EstadoLinea.OMITIDA
+                linea.puntos = None
+                linea.motivo = "Otra fila del archivo corresponde al mismo alumno."
+
+    @staticmethod
+    def _advertencia_grupo(curso: Curso, archivo: ArchivoCalificaciones) -> str:
+        if not archivo.grupo:
+            return ""
+        distinto = normalizar(archivo.grupo) != normalizar(curso.grupo) or (
+            archivo.ciclo and normalizar(archivo.ciclo) != normalizar(curso.ciclo)
+        )
+        if not distinto:
+            return ""
+        ciclo = f" ({archivo.ciclo})" if archivo.ciclo else ""
+        return (
+            f"El archivo es del grupo {archivo.grupo}{ciclo}, pero el curso abierto es "
+            f"{curso.grupo} ({curso.ciclo})."
+        )

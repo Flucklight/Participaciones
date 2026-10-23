@@ -84,6 +84,13 @@ calificacion_tareas(curso_id, alumno_id, puntos, fecha)  -- una por alumno y cur
    - Capturar otra vez **reemplaza** la anterior, pero antes se advierte («Ya tiene X en tareas; se cambiará a Y») y se pide confirmar; el cambio se puede deshacer.
    - Los oyentes pueden tenerla y se excluyen de exportaciones por defecto. Eliminar un curso la borra (el diálogo informa cuántas se pierden).
 
+15. **Importar tareas desde archivo** (`importers/calificaciones_plataforma.py` lee; `core/services.py` decide; independiente de décimas y exámenes):
+   - Se importa **una columna** de un `.xlsx` o `.csv` de otra plataforma (la persona elige; por omisión la numérica de más a la derecha, que es el promedio). El valor se guarda tal cual por el servicio de tareas (R14): `>= 0`, sin tope, reemplaza el anterior.
+   - **Nada se guarda sin vista previa y confirmación.** El lector no depende de posiciones fijas: reconoce a un alumno por apellidos, nombres y correo (`@`) en las tres primeras columnas.
+   - Identificación **por nombre** (normalizado, R3), o por número de cuenta si el archivo trae una columna «Cuenta» (tiene prioridad; el nombre queda de respaldo): coincidencia exacta única → se aplica; mismas palabras en otro orden o un nombre contenido en el otro → **dudosa**, solo se aplica si la persona la confirma; varias o ninguna coincidencia, o nombre repetido en el archivo → se omite. **Nunca se crean alumnos** ni se tocan los que el archivo no menciona.
+   - Valor vacío, no numérico, negativo o no finito → fila omitida con su motivo; una celda vacía no cambia la calificación existente. Si el archivo trae grupo y ciclo y no coinciden con el curso, la vista previa avisa.
+   - La importación completa se puede **deshacer**.
+
 ## Interfaz
 - **Paleta** (`ui_desktop/tema.py`, único lugar con colores; las vistas usan sus nombres, nunca hex ni `gray`): azul de la FES Aragón = marca y participaciones; **índigo = modo Examen** (vecino del azul, se distingue sin chocar); **verde azulado = modo Tareas**; verde = éxito, rojo = peligro, ámbar = avisos. Cada color es un par (claro, oscuro); los rellenos llevan texto blanco, el texto de enlaces usa `COLOR_ACENTO_TEXTO`.
 - Panel lateral izquierdo con **Cursos** y **Configuración** (solo esas dos por ahora).
