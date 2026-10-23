@@ -371,3 +371,12 @@ class ResultadoImportacionTareas:
     omitidas: int  # omitidas, más las dudosas que no se confirmaron
     # {alumno_id: calificación que tenía (None si no tenía)} de lo que se guardó; lo usa deshacer.
     anteriores: dict[int, CalificacionTareas | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ResumenBase:
+    """Conteos que describen una base completa (la local o la de un archivo a importar)."""
+
+    cursos: int
+    alumnos: int
+    participaciones: int

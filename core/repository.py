@@ -14,6 +14,7 @@ from .models import (
     Examen,
     Participacion,
     ResumenAlumno,
+    ResumenBase,
     TipoInscripcion,
 )
 from .calificacion_final import Ponderaciones
@@ -96,6 +97,17 @@ class Repositorio:
     def transaccion(self) -> sqlite3.Connection:
         """Uso: `with repo.transaccion(): ...` (commit, o rollback si hay error)."""
         return self._db
+
+    @property
+    def conexion(self) -> sqlite3.Connection:
+        """Solo para copiar o restaurar la base completa (`core.database`); no para consultas."""
+        return self._db
+
+    def contar_contenido(self) -> ResumenBase:
+        def contar(tabla: str) -> int:
+            return self._db.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]
+
+        return ResumenBase(contar("curso"), contar("alumno"), contar("participacion"))
 
     # ---- cursos --------------------------------------------------------
     def insertar_curso(self, curso: Curso) -> Curso:
@@ -180,6 +192,13 @@ class Repositorio:
             "SELECT * FROM alumno WHERE num_cuenta IS NULL AND nombre_norm = ?"
             " ORDER BY id",
             (normalizar(nombre),),
+        )
+        return [_alumno(f) for f in filas]
+
+    def buscar_alumnos_por_nombre(self, nombre: str) -> list[Alumno]:
+        """Alumnos (con o sin cuenta) cuyo nombre normalizado es exactamente `nombre` normalizado."""
+        filas = self._db.execute(
+            "SELECT * FROM alumno WHERE nombre_norm = ? ORDER BY id", (normalizar(nombre),)
         )
         return [_alumno(f) for f in filas]
 

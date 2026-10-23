@@ -8,9 +8,12 @@ import sqlite3
 from collections import Counter
 from collections.abc import Iterable
 from datetime import date
+from pathlib import Path
 
 from .calificacion_final import POR_OMISION, DesgloseFinal, Ponderaciones, calificacion_final, desglose_final
+from .database import abrir_base_externa, exportar_base, reemplazar_contenido, respaldar
 from .errores import ErrorDominio
+from .importar_base import PlanFusion, ResultadoFusion, aplicar_plan, calcular_plan
 from .models import (
     Alumno,
     ArchivoCalificaciones,
@@ -37,6 +40,7 @@ from .models import (
     ResultadoRegistro,
     ResultadoTareas,
     ResumenAlumno,
+    ResumenBase,
     TipoInscripcion,
     VistaPreviaImportacion,
     VistaPreviaTareas,
@@ -50,6 +54,67 @@ from .repository import Repositorio
 class ServicioParticipaciones:
     def __init__(self, repo: Repositorio) -> None:
         self._repo = repo
+        self._respaldo_importacion: Path | None = None  # copia previa a la última importación (R19)
+
+    # ================= exportar e importar la base (R19) =================
+    def exportar_base(self, destino: str | Path) -> Path:
+        return exportar_base(self._repo.conexion, destino)
+
+    def resumen_base_local(self) -> ResumenBase:
+        return self._repo.contar_contenido()
+
+    def resumen_base_archivo(self, ruta: str | Path) -> ResumenBase:
+        """Conteos del archivo a importar; también lo valida (lanza ErrorDominio si no sirve)."""
+        externa = abrir_base_externa(ruta)
+        try:
+            return Repositorio(externa).contar_contenido()
+        finally:
+            externa.close()
+
+    def reemplazar_base(self, ruta: str | Path, carpeta_respaldos: str | Path) -> ResumenBase:
+        """La base local queda igual al archivo. Antes se respalda la local para poder deshacer."""
+        externa = abrir_base_externa(ruta)  # valida antes de tocar nada
+        try:
+            respaldo = respaldar(self._repo.conexion, carpeta_respaldos)
+            reemplazar_contenido(self._repo.conexion, externa)
+            self._respaldo_importacion = respaldo
+            return self._repo.contar_contenido()
+        finally:
+            externa.close()
+
+    def previsualizar_fusion(self, ruta: str | Path, unir: frozenset[str] = frozenset()) -> PlanFusion:
+        """Qué haría fusionar el archivo con la base local. No modifica nada. `unir`: dudosos confirmados."""
+        externa = abrir_base_externa(ruta)
+        try:
+            return calcular_plan(self._repo, Repositorio(externa), unir)
+        finally:
+            externa.close()
+
+    def fusionar_base(
+        self, ruta: str | Path, carpeta_respaldos: str | Path, unir: frozenset[str] = frozenset(),
+        usar_importado: frozenset[str] = frozenset(), mantener_ambas: frozenset[str] = frozenset(),
+    ) -> ResultadoFusion:
+        """Aplica lo previsualizado con las mismas decisiones. Respalda antes; si falla no queda nada a medias."""
+        plan = self.previsualizar_fusion(ruta, unir)
+        respaldo = respaldar(self._repo.conexion, carpeta_respaldos)
+        resultado = aplicar_plan(self._repo, plan, usar_importado, mantener_ambas)
+        self._respaldo_importacion = respaldo
+        return resultado
+
+    @property
+    def hay_importacion_por_deshacer(self) -> bool:
+        return self._respaldo_importacion is not None
+
+    def deshacer_importacion(self) -> ResumenBase:
+        if self._respaldo_importacion is None:
+            raise ErrorDominio("No hay ninguna importación que deshacer.")
+        anterior = abrir_base_externa(self._respaldo_importacion)
+        try:
+            reemplazar_contenido(self._repo.conexion, anterior)
+        finally:
+            anterior.close()
+        self._respaldo_importacion = None
+        return self._repo.contar_contenido()
 
     # ================= cursos =================
     def listar_cursos(self, incluir_archivados: bool = False) -> list[Curso]:

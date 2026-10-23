@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from .errores import ErrorDominio
 from .rutas import carpeta_datos
 
 RUTA_POR_DEFECTO = carpeta_datos() / "participaciones.db"
@@ -142,3 +143,88 @@ def respaldar(conexion: sqlite3.Connection, carpeta: str | Path, conservar: int 
     for archivo in antiguos:
         archivo.unlink(missing_ok=True)
     return destino
+
+
+# ---- exportar e importar la base completa (R19) ---------------------------
+_TABLAS_BASE = ("alumno", "curso", "inscripcion", "participacion")  # sin ellas no es una base de la app
+
+
+def _ruta_de(conexion: sqlite3.Connection) -> Path | None:
+    for _, nombre, archivo in conexion.execute("PRAGMA database_list"):
+        if nombre == "main" and archivo:
+            return Path(archivo)
+    return None  # en memoria
+
+
+def _estructura(conexion: sqlite3.Connection) -> dict[str, set[str]]:
+    tablas = [f[0] for f in conexion.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")]
+    return {t: {c[1] for c in conexion.execute(f'PRAGMA table_info("{t}")')} for t in tablas}
+
+
+def exportar_base(conexion: sqlite3.Connection, destino: str | Path) -> Path:
+    """Copia consistente de toda la base en `destino` (sobrescribe si existe). No modifica el origen."""
+    destino = Path(destino)
+    if not destino.parent.is_dir():
+        raise ErrorDominio(f"La carpeta «{destino.parent}» no existe.")
+    origen = _ruta_de(conexion)
+    if origen is not None and destino.resolve() == origen.resolve():
+        raise ErrorDominio("El destino es la base en uso; elige otro archivo.")
+    conexion.commit()
+    copia = None
+    try:
+        copia = sqlite3.connect(destino)
+        conexion.backup(copia)
+    except (sqlite3.Error, OSError) as error:
+        raise ErrorDominio(
+            f"No se pudo guardar «{destino.name}»: revisa que no esté abierto y que haya permisos ({error})."
+        ) from error
+    finally:
+        if copia is not None:
+            copia.close()
+    return destino
+
+
+def abrir_base_externa(ruta: str | Path) -> sqlite3.Connection:
+    """Valida un `.db` ajeno y devuelve una copia EN MEMORIA ya migrada al esquema actual.
+
+    El archivo original nunca se modifica. Rechaza lo que no es una base de la app o es de una
+    versión más nueva (tablas o columnas que esta versión no conoce)."""
+    ruta = Path(ruta)
+    if not ruta.is_file():
+        raise ErrorDominio(f"No se encontró el archivo «{ruta.name}».")
+    origen = copia = None
+    try:
+        origen = sqlite3.connect(f"{ruta.resolve().as_uri()}?mode=ro", uri=True)
+        copia = sqlite3.connect(":memory:")
+        origen.backup(copia)  # falla aquí si no es SQLite
+        copia.row_factory = sqlite3.Row
+        ajena = _estructura(copia)
+    except sqlite3.Error as error:
+        if copia is not None:
+            copia.close()
+        raise ErrorDominio(f"«{ruta.name}» no es una base de Participaciones válida.") from error
+    finally:
+        if origen is not None:
+            origen.close()
+    if not all(t in ajena for t in _TABLAS_BASE):
+        copia.close()
+        raise ErrorDominio(f"«{ruta.name}» no es una base de Participaciones (faltan tablas).")
+    esperada = _estructura(conectar(":memory:"))
+    if any(t not in esperada or not c <= esperada[t] for t, c in ajena.items()):
+        copia.close()
+        raise ErrorDominio(
+            f"«{ruta.name}» parece de una versión más nueva de la aplicación; actualiza esta versión."
+        )
+    copia.executescript(ESQUEMA)  # tablas que la versión de origen aún no tenía
+    _migrar(copia)
+    return copia
+
+
+def reemplazar_contenido(conexion: sqlite3.Connection, origen: sqlite3.Connection) -> None:
+    """Deja `conexion` con exactamente el contenido de `origen`, sin cerrarla."""
+    conexion.commit()
+    try:
+        origen.backup(conexion)
+    except sqlite3.Error as error:
+        raise ErrorDominio(f"No se pudo reemplazar la base: {error}") from error
