@@ -6,6 +6,7 @@ from tkinter import messagebox, ttk
 
 import customtkinter as ctk
 
+from core.calificacion_final import redondear, sobre_diez
 from core.errores import ErrorDominio
 from core.models import Alumno, Curso, LineaExamen, LineaHistorial, TipoInscripcion
 
@@ -94,15 +95,24 @@ class VistaHistorial(ctk.CTkFrame):
         fila.pack(fill="x", padx=24, pady=(16, 0))
         self._valores: dict[str, ctk.CTkLabel] = {}
         for clave, etiqueta in (("total", "Total de décimas"), ("registros", "Participaciones"),
-                                ("ultima", "Última participación")):
+                                ("ultima", "Última participación"), ("final", "Calificación final")):
             tarjeta = ctk.CTkFrame(fila, corner_radius=12, fg_color=tema.COLOR_TARJETA,
                                    border_width=1, border_color=tema.COLOR_BORDE)
-            tarjeta.pack(side="left", fill="x", expand=True, padx=(0, 12))
+            tarjeta.pack(side="left", fill="both", expand=True, padx=(0, 12))
             ctk.CTkLabel(tarjeta, text=etiqueta, anchor="w", font=tema.fuente(12),
                          text_color=tema.COLOR_TEXTO_SUAVE).pack(fill="x", padx=16, pady=(10, 0))
             valor = ctk.CTkLabel(tarjeta, text="", anchor="w", font=tema.fuente(24, "bold"))
-            valor.pack(fill="x", padx=16, pady=(0, 10))
+            valor.pack(fill="x", padx=16, pady=(0, 10 if clave != "final" else 0))
             self._valores[clave] = valor
+            if clave == "final":  # la misma calificación de 0 a 10, en pequeño
+                equivalente = ctk.CTkLabel(tarjeta, text="", anchor="w", font=tema.fuente(12),
+                                           text_color=tema.COLOR_TEXTO_SUAVE)
+                equivalente.pack(fill="x", padx=16, pady=(0, 10))
+                self._valores["final10"] = equivalente
+        # Desglose de la final: de dónde sale cada punto (lo arma el servicio; aquí solo se muestra).
+        self._desglose = ctk.CTkLabel(self, text="", anchor="w", justify="left", wraplength=1000,
+                                      font=tema.fuente(12), text_color=tema.COLOR_TEXTO_SUAVE)
+        self._desglose.pack(fill="x", padx=24, pady=(6, 0))
 
     def _construir_selector(self) -> None:
         fila = ctk.CTkFrame(self, fg_color="transparent")
@@ -248,6 +258,7 @@ class VistaHistorial(ctk.CTkFrame):
         self._valores["ultima"].configure(
             text=formatear_fecha(max(l.participacion.fecha for l in lineas)) if lineas else "—"
         )
+        self._mostrar_final()
         hay_piso = any(l.toco_el_piso for l in lineas)
         self._aviso.configure(text="⚑ = se aplicó el mínimo de 0" if hay_piso else "")
         if resaltar is not None and self._tabla.exists(str(resaltar)):
@@ -292,6 +303,17 @@ class VistaHistorial(ctk.CTkFrame):
         """«Proyecto final», con «· Equipo N» si el alumno tiene equipo."""
         equipo = self._servicio.equipo_de(self._curso_id, self._alumno_id)
         return "Proyecto final" + (f" · Equipo {equipo}" if equipo is not None else "")
+
+    def _mostrar_final(self) -> None:
+        """Tarjeta de calificación final (entera y de 0 a 10) y su desglose por componente."""
+        desglose = self._servicio.desglose_final(self._curso_id, self._alumno_id)
+        self._valores["final"].configure(text=str(redondear(desglose.final)))
+        self._valores["final10"].configure(text=f"= {sobre_diez(desglose.final):.1f} de 10")
+        self._desglose.configure(text="  ·  ".join(
+            f"{c.nombre} {formatear_decimas(c.valor)} × {formatear_decimas(c.ponderacion)} % = "
+            f"{formatear_decimas(c.aporte)}"
+            for c in desglose.componentes
+        ))
 
     def _cambiar_curso(self, etiqueta: str) -> None:
         self._curso_id = self._etiquetas[etiqueta]

@@ -72,11 +72,11 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 3: Ver y exportar
 
-- [ ] **T6: Tarjeta y desglose en el historial** (M)
+- [x] **T6: Tarjeta y desglose en el historial** (M)
   - Descripción: tarjeta «Calificación final» (entera, con «= 8.1 de 10») y desglose por componente (valor 0–100, ponderación, aporte) que entrega el servicio.
   - Aceptación:
-    - [ ] La tarjeta coincide con la tabla del curso; el desglose lista participaciones (décimas × 10), exámenes, tareas y proyecto, y sus aportes suman la final exacta.
-    - [ ] Cambia al cambiar de curso en el selector y al cambiar las ponderaciones; no altera las demás secciones.
+    - [x] La tarjeta coincide con la tabla del curso; el desglose lista participaciones (décimas × 10), exámenes, tareas y proyecto, y sus aportes suman la final exacta.
+    - [x] Cambia al cambiar de curso en el selector y al cambiar las ponderaciones; no altera las demás secciones.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_historial.py -q`
   - Archivos: `ui_desktop/vista_historial.py`, `tests/test_ui_historial.py`
   - Dependencias: T2
