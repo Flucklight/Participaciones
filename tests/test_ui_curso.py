@@ -613,12 +613,14 @@ def test_clic_en_fila_en_modo_participacion_no_carga_calificaciones(curso_ui):
     assert v._entrada_decimas.get() == ""
 
 
-def test_f2_alterna_el_modo(curso_ui):
+def test_f2_recorre_los_tres_modos_en_ciclo(curso_ui):
     v = curso_ui.vista
     for campo in (v._entrada_alumno, v._entrada_decimas):
         assert campo._entry.bind("<F2>")  # el Entry de tk guarda el enlace
     assert v._alternar_modo() == "break" and v._modo == "examen"
     assert v._selector_modo.get() == "Examen"
+    v._alternar_modo()
+    assert v._modo == "tareas" and v._selector_modo.get() == "Tareas"
     v._alternar_modo()
     assert v._modo == "participacion" and v._selector_modo.get() == "Participación"
 
@@ -775,3 +777,195 @@ def test_sin_examenes_renombrar_y_eliminar_avisan(curso_ui, preguntas):
     assert _texto_franja(v).startswith("⚠")
     v.eliminar_examen()
     assert _texto_franja(v).startswith("⚠") and preguntas.mensajes == []
+
+
+# ---------------- modo Tareas ----------------
+def _modo_tareas(curso_ui):
+    curso_ui.vista._selector_modo.set("Tareas")
+    curso_ui.vista._cambiar_modo("Tareas")
+    curso_ui.app.update()
+    return curso_ui.vista
+
+
+def _tareas_de(curso_ui, cuenta):
+    alumno = _fila(curso_ui.vista, cuenta).alumno
+    return curso_ui.srv.tareas_de(curso_ui.curso.id, alumno.id)
+
+
+def test_cambiar_a_tareas_ajusta_campos_boton_y_oculta_lo_de_examen(curso_ui):
+    v = _modo_tareas(curso_ui)
+    assert v._modo == "tareas" and not v._fila_examen.winfo_ismapped()
+    assert v._boton_guardar.cget("text") == "Registrar tareas"
+    assert v._entrada_decimas.cget("placeholder_text") == "Calificación de tareas"
+    assert not v._atajos[0].winfo_ismapped()
+    _modo_participacion(curso_ui)
+    assert v._boton_guardar.cget("text") == "Guardar" and v._atajos[0].winfo_ismapped()
+
+
+def test_los_tres_modos_tienen_colores_distintos(curso_ui):
+    from ui_desktop import tema
+
+    v = curso_ui.vista
+    colores = {tema.COLOR_ACENTO, tema.COLOR_EXAMEN, tema.COLOR_TAREAS}
+    assert len(colores) == 3
+    for modo, esperado in (("Tareas", tema.COLOR_TAREAS), ("Examen", tema.COLOR_EXAMEN),
+                           ("Participación", tema.COLOR_ACENTO)):
+        v._selector_modo.set(modo)
+        v._cambiar_modo(modo)
+        assert tuple(v._boton_guardar.cget("fg_color")) == tuple(esperado)
+
+
+def test_registrar_tareas_por_cuenta_conserva_el_modo(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _escribir(v, "100000001", "84.5")
+    v.guardar()
+    assert "ABREU SOLANO MARCOS" in _texto_franja(v) and "Tareas: 84.5" in _texto_franja(v)
+    assert _tareas_de(curso_ui, "100000001").puntos == 84.5
+    assert v._modo == "tareas"
+    assert v._entrada_alumno.get() == "" and v._entrada_decimas.get() == ""
+    assert _fila(v, "100000001").total == 0  # las décimas no cambian
+
+
+def test_tareas_invalidas_muestran_error_y_no_guardan(curso_ui):
+    v = _modo_tareas(curso_ui)
+    for alumno, texto in (("", "80"), ("100000001", ""), ("100000001", "abc"), ("100000001", "-3")):
+        _escribir(v, alumno, texto)
+        v.guardar()
+        assert _texto_franja(v).startswith("⚠"), (alumno, texto)
+    assert curso_ui.srv.resumen_eliminacion_tareas(curso_ui.curso.id) == 0
+
+
+def test_tareas_con_cero_y_puntos_extra_se_aceptan(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "0")
+    _calificar(v, "100000002", "105")
+    assert _tareas_de(curso_ui, "100000001").puntos == 0
+    assert _tareas_de(curso_ui, "100000002").puntos == 105
+
+
+def test_tareas_ambiguo_pide_elegir_y_califica_al_elegido(curso_ui):
+    v = _modo_tareas(curso_ui)
+
+    def elegir():
+        d = _dialogo(curso_ui.app)
+        d.cerrar(next(a for a in v._servicio.buscar_alumnos_en_curso(v.curso.id, "garcia ana")
+                      if a.num_cuenta == "100000004"))
+
+    curso_ui.app.after(300, elegir)
+    _calificar(v, "garcia ana", "90")
+    assert _tareas_de(curso_ui, "100000004").puntos == 90
+
+
+def test_tareas_de_alumno_inexistente_ofrece_crear_oyente_y_califica(curso_ui):
+    v = _modo_tareas(curso_ui)
+    curso_ui.app.after(300, lambda: _dialogo(curso_ui.app)._aceptar())
+    _calificar(v, "luis nuevo", "75")
+    oyente = next(f for f in v._filas if f.alumno.nombre_completo == "LUIS NUEVO")
+    assert oyente.tipo == TipoInscripcion.OYENTE and oyente.tareas == 75
+    assert "alumno agregado" in _texto_franja(v)
+
+
+def test_tareas_reemplazo_advierte_y_no_guarda_hasta_confirmar(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "70")
+    _calificar(v, "100000001", "90")
+    assert "Ya tiene 70 en tareas" in _texto_franja(v) and "90" in _texto_franja(v)
+    assert _tareas_de(curso_ui, "100000001").puntos == 70
+    v.confirmar_reemplazo()
+    assert _tareas_de(curso_ui, "100000001").puntos == 90
+    assert v._entrada_alumno.get() == "" and "(antes 70)" in _texto_franja(v)
+
+
+def test_tareas_cancelar_reemplazo_conserva_la_calificacion(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "70")
+    _calificar(v, "100000001", "90")
+    v.cancelar_reemplazo()
+    assert _tareas_de(curso_ui, "100000001").puntos == 70 and "cancel" in _texto_franja(v).lower()
+
+
+def test_cambiar_de_modo_con_un_reemplazo_sin_confirmar_lo_descarta(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "70")
+    _calificar(v, "100000001", "90")
+    _modo_participacion(curso_ui)
+    v.confirmar_reemplazo()  # ya no hay nada pendiente: no hace nada
+    assert _tareas_de(curso_ui, "100000001").puntos == 70
+
+
+def test_deshacer_la_primera_calificacion_de_tareas_la_elimina(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "70")
+    assert v._boton_deshacer.winfo_manager()
+    v.deshacer()
+    assert _tareas_de(curso_ui, "100000001") is None and "Se deshizo" in _texto_franja(v)
+    v.deshacer()  # sin nada más que deshacer: no falla
+    assert _tareas_de(curso_ui, "100000001") is None
+
+
+def test_deshacer_un_reemplazo_de_tareas_restaura_la_anterior(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "70")
+    _calificar(v, "100000001", "90")
+    v.confirmar_reemplazo()
+    v.deshacer()
+    assert _tareas_de(curso_ui, "100000001").puntos == 70
+
+
+def test_deshacer_solo_afecta_a_lo_ultimo_entre_tareas_examen_y_participacion(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "70")
+    _modo_participacion(curso_ui)
+    _calificar(v, "100000001", "10")  # lo último es la participación
+    v.deshacer()
+    assert _fila(v, "100000001").total == 0
+    assert _tareas_de(curso_ui, "100000001").puntos == 70  # no se tocó
+
+
+def test_clic_en_fila_en_modo_tareas_carga_la_calificacion_actual(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000002", "88")
+    _clic_en_fila(curso_ui, "100000002")
+    assert v._entrada_alumno.get() == "ACOSTA ORTEGA ELENA" and v._entrada_decimas.get() == "88"
+    v._entrada_decimas.delete(0, "end")
+    v._entrada_decimas.insert(0, "92")
+    v.guardar()  # corregir: advierte reemplazo
+    assert "Ya tiene 88" in _texto_franja(v)
+    v.confirmar_reemplazo()
+    assert _tareas_de(curso_ui, "100000002").puntos == 92
+
+
+def test_clic_en_fila_sin_tareas_deja_vacio_el_campo(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _clic_en_fila(curso_ui, "100000001")
+    assert v._elegido.num_cuenta == "100000001" and v._entrada_decimas.get() == ""
+
+
+def test_clic_en_fila_en_modo_participacion_no_carga_tareas(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000002", "88")
+    _modo_participacion(curso_ui)
+    _clic_en_fila(curso_ui, "100000002")
+    assert v._entrada_decimas.get() == ""
+
+
+def test_columna_tareas_entre_decimas_y_examenes_con_0_sin_captura(curso_ui):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    columnas = list(v._tabla["columns"])
+    assert columnas.index("total") < columnas.index("tareas") < columnas.index(_columnas_examen(v)[0][0])
+    assert v._tabla.heading("tareas", "text").split("  ")[0] == "Tareas"
+    assert _celda(v, "100000001", "tareas") == "0"
+    _modo_tareas(curso_ui)
+    _calificar(v, "100000001", "84.5")
+    assert _celda(v, "100000001", "tareas") == "84.5" and _celda(v, "100000002", "tareas") == "0"
+
+
+def test_ordenar_por_la_columna_tareas(curso_ui):
+    v = _modo_tareas(curso_ui)
+    _calificar(v, "100000003", "90")
+    _calificar(v, "100000001", "50")
+    v._ordenar_por("tareas")  # primer clic: de mayor a menor
+    assert v._tabla.get_children()[0] == str(_fila(v, "100000003").alumno.id)
+    assert "▼" in v._tabla.heading("tareas", "text")
+    v._ordenar_por("tareas")
+    assert v._tabla.get_children()[-1] == str(_fila(v, "100000003").alumno.id)

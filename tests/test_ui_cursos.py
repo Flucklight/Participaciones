@@ -141,3 +141,44 @@ def test_eliminar_curso_con_calificaciones_lo_dice_y_exige_confirmar(ui):
     assert "2 exámenes" in texto and "1 calificación" in texto
     assert estado == "disabled"  # hay calificaciones: exige escribir ELIMINAR
     assert curso.id in {c.id for c in srv.listar_cursos(True)}  # cancelado: sigue ahí
+
+
+def test_eliminar_curso_con_solo_tareas_lo_dice_y_exige_confirmar(ui):
+    app, srv, vista = ui.app, ui.srv, ui.vista
+    curso = srv.crear_curso("2027-I", "Redes", "3001")
+    alumno = srv.crear_alumno_en_curso(curso.id, "Oyente Uno")
+    srv.registrar_tareas_para_alumno(curso.id, alumno.id, 88)  # sin participaciones ni exámenes
+    vista.recargar()
+    vista._seleccionar(curso.id)
+    vistos = []
+
+    def mirar():
+        d = _dialogo(app)
+        vistos.append((d._detalle.cget("text"), str(d._ok.cget("state"))))
+        d.cancelar()
+
+    app.after(300, mirar)
+    vista.eliminar_seleccionado()
+    texto, estado = vistos[0]
+    assert "1 calificación de tareas" in texto and estado == "disabled"
+    assert curso.id in {c.id for c in srv.listar_cursos(True)}  # cancelado: sigue ahí
+
+
+def test_eliminar_curso_con_varias_tareas_usa_el_plural(ui):
+    app, srv, vista = ui.app, ui.srv, ui.vista
+    curso = srv.crear_curso("2027-I", "Redes", "3001")
+    for nombre in ("Oyente Uno", "Oyente Dos"):
+        alumno = srv.crear_alumno_en_curso(curso.id, nombre)
+        srv.registrar_tareas_para_alumno(curso.id, alumno.id, 88)
+    vista.recargar()
+    vista._seleccionar(curso.id)
+    vistos = []
+
+    def mirar():
+        d = _dialogo(app)
+        vistos.append(d._detalle.cget("text"))
+        d.cancelar()
+
+    app.after(300, mirar)
+    vista.eliminar_seleccionado()
+    assert "2 calificaciones de tareas" in vistos[0]

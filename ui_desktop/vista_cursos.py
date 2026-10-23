@@ -253,8 +253,9 @@ class VistaCursos(ctk.CTkFrame):
     def eliminar(self, curso: Curso) -> None:
         alumnos, participaciones = self._servicio.resumen_eliminacion(curso.id)
         examenes, calificaciones = self._servicio.resumen_eliminacion_examenes(curso.id)
+        tareas = self._servicio.resumen_eliminacion_tareas(curso.id)
         if DialogoEliminarCurso(
-            self, curso, alumnos, participaciones, examenes, calificaciones
+            self, curso, alumnos, participaciones, examenes, calificaciones, tareas
         ).mostrar():
             try:
                 self._servicio.eliminar_curso(curso.id)

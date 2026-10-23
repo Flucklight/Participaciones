@@ -21,8 +21,9 @@ COLUMNAS = (
     ("total", "Total", 90, "e"),
     ("nota", "Nota", 360, "w"),
 )
+TAREAS = "tareas"  # iid de la fila de tareas en la tabla de calificaciones
 COLUMNAS_EXAMENES = (
-    ("examen", "Examen", 360, "w"),
+    ("examen", "Concepto", 360, "w"),
     ("puntos", "Calificación", 120, "e"),
     ("fecha", "Fecha", 110, "center"),
 )
@@ -38,6 +39,7 @@ class VistaHistorial(ctk.CTkFrame):
         self._curso_id = curso_id if any(c.id == curso_id for c in self._cursos) else self._cursos[0].id
         self._lineas: dict[int, LineaHistorial] = {}
         self._lineas_examen: dict[int, LineaExamen] = {}
+        self._tareas = None  # CalificacionTareas del alumno en el curso, o None
         self._colores = configurar_estilo()
 
         self._construir_encabezado()
@@ -166,7 +168,9 @@ class VistaHistorial(ctk.CTkFrame):
         """Sección «Exámenes»: una fila por examen del curso, con su calificación."""
         cabecera = ctk.CTkFrame(self, fg_color="transparent")
         self._cab_examenes = cabecera
-        ctk.CTkLabel(cabecera, text="Exámenes", font=tema.fuente(15, "bold")).pack(side="left")
+        self._titulo_calificaciones = ctk.CTkLabel(
+            cabecera, text="Exámenes y tareas", font=tema.fuente(15, "bold"))
+        self._titulo_calificaciones.pack(side="left")
         self._aviso_examenes = ctk.CTkLabel(cabecera, text="", text_color=tema.COLOR_TEXTO_SUAVE)
         self._aviso_examenes.pack(side="left", padx=12)
 
@@ -250,10 +254,17 @@ class VistaHistorial(ctk.CTkFrame):
         self._actualizar_botones()
         self._recargar_examenes()
 
-    def _recargar_examenes(self, resaltar: int | None = None) -> None:
+    def _recargar_examenes(self, resaltar: int | str | None = None) -> None:
+        """Tabla de calificaciones: primero «Tareas» y luego un renglón por examen del curso."""
         lineas = self._servicio.historial_examenes(self._curso_id, self._alumno_id)
         self._lineas_examen = {l.examen.id: l for l in lineas}
+        self._tareas = self._servicio.tareas_de(self._curso_id, self._alumno_id)
         self._tabla_examenes.delete(*self._tabla_examenes.get_children())
+        self._tabla_examenes.insert(
+            "", "end", iid=TAREAS, tags=() if self._tareas else ("sin",),
+            values=("Tareas", formatear_decimas(self._tareas.puntos if self._tareas else 0.0),
+                    formatear_fecha(self._tareas.fecha) if self._tareas else "—"),
+        )
         for l in lineas:
             c = l.calificacion
             self._tabla_examenes.insert(
@@ -326,45 +337,64 @@ class VistaHistorial(ctk.CTkFrame):
         self.recargar()
 
     # ====================== exámenes ======================
-    def _examen_seleccionado(self) -> LineaExamen | None:
+    def _fila_calificacion(self):
+        """(iid, nombre, calificación o None) del renglón elegido; None si no hay selección.
+
+        El iid es `TAREAS` para la fila de tareas o el id del examen (como texto).
+        """
         seleccion = self._tabla_examenes.selection()
-        return self._lineas_examen.get(int(seleccion[0])) if seleccion else None
+        if not seleccion:
+            return None
+        iid = seleccion[0]
+        if iid == TAREAS:
+            return iid, "Tareas", self._tareas
+        linea = self._lineas_examen.get(int(iid))
+        return (iid, linea.examen.nombre, linea.calificacion) if linea else None
 
     def _actualizar_botones_examenes(self) -> None:
-        linea = self._examen_seleccionado()
-        self._boton_calificar.configure(state="normal" if linea else "disabled")
-        self._boton_quitar.configure(state="normal" if linea and linea.calificacion else "disabled")
+        fila = self._fila_calificacion()
+        self._boton_calificar.configure(state="normal" if fila else "disabled")
+        self._boton_quitar.configure(state="normal" if fila and fila[2] else "disabled")
 
     def editar_calificacion(self) -> None:
-        linea = self._examen_seleccionado()
-        if linea is None:
+        fila = self._fila_calificacion()
+        if fila is None:
             return
-        examen = linea.examen
+        iid, nombre, actual = fila
 
         def guardar(d: dict):
+            if iid == TAREAS:
+                return self._servicio.establecer_tareas(
+                    self._curso_id, self._alumno_id, d["puntos"], d["fecha"]
+                )
             return self._servicio.establecer_calificacion(
-                self._curso_id, examen.id, self._alumno_id, d["puntos"], d["fecha"]
+                self._curso_id, int(iid), self._alumno_id, d["puntos"], d["fecha"]
             )
 
-        if DialogoCalificacion(self, examen.nombre, guardar, linea.calificacion).mostrar():
-            self._recargar_examenes(resaltar=examen.id)
+        if DialogoCalificacion(self, nombre, guardar, actual).mostrar():
+            self._recargar_examenes(resaltar=iid)
 
     def eliminar_calificacion(self) -> None:
-        linea = self._examen_seleccionado()
-        if linea is None or linea.calificacion is None:
+        fila = self._fila_calificacion()
+        if fila is None or fila[2] is None:
             return
+        iid, nombre, actual = fila
+        vuelve = "Las tareas volverán" if iid == TAREAS else "El examen volverá"
         if not messagebox.askyesno(
             "Quitar calificación",
-            f"¿Quitar la calificación de {formatear_decimas(linea.puntos)} en «{linea.examen.nombre}»?"
-            "\n\nEl examen volverá a valer 0.",
+            f"¿Quitar la calificación de {formatear_decimas(actual.puntos)} en «{nombre}»?"
+            f"\n\n{vuelve} a valer 0.",
             parent=self,
         ):
             return
         try:
-            self._servicio.eliminar_calificacion(linea.examen.id, self._alumno_id)
+            if iid == TAREAS:
+                self._servicio.eliminar_tareas(self._curso_id, self._alumno_id)
+            else:
+                self._servicio.eliminar_calificacion(int(iid), self._alumno_id)
         except ErrorDominio as error:
             messagebox.showerror("No se pudo quitar", str(error), parent=self)
-        self._recargar_examenes(resaltar=linea.examen.id)
+        self._recargar_examenes(resaltar=iid)
 
     # ====================== alumno ======================
     def editar_alumno(self) -> None:

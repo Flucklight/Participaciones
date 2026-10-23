@@ -17,6 +17,8 @@ COLOR_ACENTO_HOVER = ("#264C8A", "#3463BD")
 COLOR_ACENTO_TEXTO = ("#2F5DA8", "#8DB1F7")
 COLOR_EXAMEN = ("#5B46B2", "#7A64E0")           # modo Examen
 COLOR_EXAMEN_HOVER = ("#4A3894", "#664FCB")
+COLOR_TAREAS = ("#0F766E", "#0D8A80")           # modo Tareas (verde azulado)
+COLOR_TAREAS_HOVER = ("#0B5F58", "#0A736B")
 
 # --- estados ---------------------------------------------------------------
 COLOR_EXITO = ("#237A5A", "#4FC79A")

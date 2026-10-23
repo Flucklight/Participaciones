@@ -11,10 +11,12 @@ from core.errores import ErrorDominio
 from core.models import (
     Alumno,
     Calificacion,
+    CalificacionTareas,
     EstadoRegistro,
     Examen,
     ResultadoCalificacion,
     ResultadoRegistro,
+    ResultadoTareas,
     ResumenAlumno,
     TipoInscripcion,
 )
@@ -29,7 +31,24 @@ from .tabla import ESTILO, configurar_estilo
 MAX_SUGERENCIAS = 6
 ATAJOS_DECIMAS = (5, 10, 25)
 MS_RESALTADO = 2500
-MODOS = {"Participación": "participacion", "Examen": "examen"}
+MODOS = {"Participación": "participacion", "Examen": "examen", "Tareas": "tareas"}
+# Por modo: (texto del botón, ancho, placeholder del campo, color, color al pasar el ratón, ayuda)
+AJUSTES_MODO = {
+    "participacion": (
+        "Guardar", 100, "Décimas", tema.COLOR_ACENTO, tema.COLOR_ACENTO_HOVER,
+        "Escribe cuenta o nombre (o haz clic en un alumno de la tabla), las décimas y presiona "
+        "Enter. Los negativos restan; el total no baja de 0.",
+    ),
+    "examen": (
+        "Registrar examen", 140, "Calificación", tema.COLOR_EXAMEN, tema.COLOR_EXAMEN_HOVER,
+        "Elige el examen, escribe cuenta o nombre y la calificación, y presiona Enter.",
+    ),
+    "tareas": (
+        "Registrar tareas", 140, "Calificación de tareas", tema.COLOR_TAREAS, tema.COLOR_TAREAS_HOVER,
+        "Escribe cuenta o nombre y la calificación de tareas (el promedio de la otra plataforma) "
+        "y presiona Enter.",
+    ),
+}
 SIN_EXAMENES = "(sin exámenes)"
 
 COLUMNAS = (
@@ -37,6 +56,7 @@ COLUMNAS = (
     ("cuenta", "Cuenta", 120, "center"),
     ("nombre", "Nombre", 320, "w"),
     ("total", "Décimas", 100, "e"),
+    ("tareas", "Tareas", 90, "e"),
     ("ultima", "Última", 110, "center"),
 )
 
@@ -66,6 +86,8 @@ class VistaCurso(ctk.CTkFrame):
         self._pendiente: tuple[Alumno, float] | None = None  # reemplazo por confirmar
         # Última calificación guardada: (examen_id, alumno_id, calificación previa) para deshacer.
         self._ultima_calificacion: tuple[int, int, Calificacion | None] | None = None
+        # Última calificación de tareas guardada: (alumno_id, calificación previa) para deshacer.
+        self._ultima_tareas: tuple[int, CalificacionTareas | None] | None = None
 
         self._construir_encabezado()
         self._construir_registro()
@@ -289,6 +311,7 @@ class VistaCurso(ctk.CTkFrame):
             "cuenta": lambda f: (f.alumno.num_cuenta is None, f.alumno.num_cuenta or ""),
             "nombre": lambda f: normalizar(f.alumno.nombre_completo),
             "total": lambda f: f.total,
+            "tareas": lambda f: f.tareas,
             "ultima": lambda f: (f.ultima_fecha is None, f.ultima_fecha or 0),
         }
         if clave.startswith("examen_"):
@@ -308,6 +331,7 @@ class VistaCurso(ctk.CTkFrame):
                     f.alumno.num_cuenta or "—",
                     f.alumno.nombre_completo + ("   (oyente)" if f.tipo == TipoInscripcion.OYENTE else ""),
                     formatear_decimas(f.total),
+                    formatear_decimas(f.tareas),
                     *(formatear_decimas(f.calificaciones.get(e.id, 0.0)) for e in self._examenes),
                     f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else "—",
                 ),
@@ -347,7 +371,7 @@ class VistaCurso(ctk.CTkFrame):
             self._app.abrir_historial(self.curso.id, int(iid))
 
     def _ordenar_por(self, clave: str) -> None:
-        descendente = (not self._orden[1]) if self._orden[0] == clave else (clave in ("total", "ultima") or clave.startswith("examen_"))
+        descendente = (not self._orden[1]) if self._orden[0] == clave else (clave in ("total", "tareas", "ultima") or clave.startswith("examen_"))
         self._orden = (clave, descendente)
         self._dibujar_tabla()
 
@@ -441,17 +465,20 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.delete(0, "end")
         self._entrada_alumno.insert(0, alumno.nombre_completo)
         self._ocultar_sugerencias()
-        if self._modo == "examen":
+        if self._modo in ("examen", "tareas"):
             self._cargar_calificacion_actual(alumno)
         self._entrada_decimas.focus_set()
         self._entrada_decimas.select_range(0, "end")
 
     def _cargar_calificacion_actual(self, alumno: Alumno) -> None:
-        """En modo Examen, elegir a un alumno trae su calificación para poder corregirla."""
+        """En modo Examen o Tareas, elegir a un alumno trae su calificación para corregirla."""
         self._entrada_decimas.delete(0, "end")
-        if self._examen_actual is None:
+        if self._modo == "tareas":
+            actual = self._servicio.tareas_de(self.curso.id, alumno.id)
+        elif self._examen_actual is None:
             return
-        actual = self._servicio.calificacion_de(self._examen_actual.id, alumno.id)
+        else:
+            actual = self._servicio.calificacion_de(self._examen_actual.id, alumno.id)
         if actual:
             self._entrada_decimas.insert(0, formatear_decimas(actual.puntos))
 
@@ -476,6 +503,9 @@ class VistaCurso(ctk.CTkFrame):
     def guardar(self) -> None:
         if self._modo == "examen":
             self._guardar_examen()
+            return
+        if self._modo == "tareas":
+            self._guardar_tareas()
             return
         consulta = self._entrada_alumno.get().strip()
         if not consulta:
@@ -535,6 +565,7 @@ class VistaCurso(ctk.CTkFrame):
     def _registrado(self, resultado: ResultadoRegistro, alumno_nuevo: bool = False) -> None:
         self._ultimo_registro = resultado.participacion.id
         self._ultima_calificacion = None
+        self._ultima_tareas = None
         nuevo = "  (alumno agregado)" if alumno_nuevo else ""
         aplicadas = resultado.decimas_aplicadas
         if aplicadas is not None and abs(aplicadas - resultado.decimas) > 1e-9:
@@ -556,6 +587,9 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.focus_set()
 
     def deshacer(self) -> None:
+        if self._ultima_tareas is not None:
+            self._deshacer_tareas()
+            return
         if self._ultima_calificacion is not None:
             self._deshacer_calificacion()
             return
@@ -576,36 +610,23 @@ class VistaCurso(ctk.CTkFrame):
         )
         self._entrada_alumno.focus_set()
 
-    # ====================== modo Examen ======================
+    # ====================== modos Examen y Tareas ======================
     def _cambiar_modo(self, valor: str) -> None:
         self._modo = MODOS[valor]
         self._pendiente = None
-        examen = self._modo == "examen"
-        if examen:
+        texto, ancho, placeholder, color, hover, ayuda = AJUSTES_MODO[self._modo]
+        if self._modo == "examen":
             self._fila_examen.pack(fill="x", padx=16, pady=(6, 0), before=self._fila_registro)
             self._cargar_examenes()
         else:
             self._fila_examen.pack_forget()
-        for boton in self._atajos:
-            boton.grid_remove() if examen else boton.grid()
+        for boton in self._atajos:  # +5, +10 y +25 solo sirven para décimas
+            boton.grid() if self._modo == "participacion" else boton.grid_remove()
         self._entrada_decimas.delete(0, "end")
-        self._entrada_decimas.configure(placeholder_text="Calificación" if examen else "Décimas")
-        self._selector_modo.configure(
-            selected_color=tema.COLOR_EXAMEN if examen else tema.COLOR_ACENTO,
-            selected_hover_color=tema.COLOR_EXAMEN_HOVER if examen else tema.COLOR_ACENTO_HOVER,
-        )
-        self._boton_guardar.configure(
-            text="Registrar examen" if examen else "Guardar",
-            width=140 if examen else 100,
-            fg_color=tema.COLOR_EXAMEN if examen else tema.COLOR_ACENTO,
-            hover_color=tema.COLOR_EXAMEN_HOVER if examen else tema.COLOR_ACENTO_HOVER,
-        )
-        self._info(
-            "Elige el examen, escribe cuenta o nombre y la calificación, y presiona Enter."
-            if examen else
-            "Escribe cuenta o nombre (o haz clic en un alumno de la tabla), las décimas y presiona "
-            "Enter. Los negativos restan; el total no baja de 0."
-        )
+        self._entrada_decimas.configure(placeholder_text=placeholder)
+        self._selector_modo.configure(selected_color=color, selected_hover_color=hover)
+        self._boton_guardar.configure(text=texto, width=ancho, fg_color=color, hover_color=hover)
+        self._info(ayuda)
         self._entrada_alumno.focus_set()
 
     def _cargar_examenes(self, seleccionar: int | None = None) -> None:
@@ -761,19 +782,29 @@ class VistaCurso(ctk.CTkFrame):
 
     def _pedir_reemplazo(self, resultado: ResultadoCalificacion) -> None:
         """Ya había una calificación: avisa y espera confirmación (nada se guardó aún)."""
-        self._pendiente = (resultado.alumno, resultado.puntos)
-        self._mensaje.configure(
-            text=(f"⚠  {resultado.alumno.nombre_completo}  ·  Ya tiene "
-                  f"{formatear_decimas(resultado.calificacion_anterior.puntos)} en "
-                  f"{resultado.examen.nombre}; se cambiará a {formatear_decimas(resultado.puntos)}."),
-            text_color=tema.COLOR_AVISO,
+        self._advertir_reemplazo(
+            resultado.alumno, resultado.puntos,
+            f"Ya tiene {formatear_decimas(resultado.calificacion_anterior.puntos)} en "
+            f"{resultado.examen.nombre}; se cambiará a {formatear_decimas(resultado.puntos)}.",
         )
+
+    def _advertir_reemplazo(self, alumno: Alumno, puntos: float, texto: str) -> None:
+        self._pendiente = (alumno, puntos)
+        self._mensaje.configure(text=f"⚠  {alumno.nombre_completo}  ·  {texto}",
+                                text_color=tema.COLOR_AVISO)
         self._ocultar_acciones()
+        _t, _a, _p, color, hover, _h = AJUSTES_MODO[self._modo]  # el botón lleva el color del modo
+        self._boton_confirmar.configure(fg_color=color, hover_color=hover)
         self._boton_confirmar.pack(side="right", padx=(0, 10))
         self._boton_cancelar.pack(side="right", padx=(0, 6))
 
     def confirmar_reemplazo(self) -> None:
-        if self._pendiente is None or self._examen_actual is None:
+        if self._pendiente is None:
+            return
+        if self._modo == "tareas":
+            self._confirmar_reemplazo_tareas()
+            return
+        if self._examen_actual is None:
             return
         alumno, puntos = self._pendiente
         self._pendiente = None
@@ -801,6 +832,7 @@ class VistaCurso(ctk.CTkFrame):
             deshacible=True,
         )
         self._ultimo_registro = None
+        self._ultima_tareas = None
         self._ultima_calificacion = (
             resultado.examen.id, resultado.alumno.id, resultado.calificacion_anterior
         )
@@ -832,11 +864,125 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.focus_set()
 
     def _alternar_modo(self, _evento=None) -> str:
-        """F2: cambia entre Participación y Examen sin soltar el teclado."""
-        valor = "Participación" if self._modo == "examen" else "Examen"
+        """F2: recorre los modos (Participación → Examen → Tareas) sin soltar el teclado."""
+        nombres = list(MODOS)
+        actual = next(n for n, m in MODOS.items() if m == self._modo)
+        valor = nombres[(nombres.index(actual) + 1) % len(nombres)]
         self._selector_modo.set(valor)
         self._cambiar_modo(valor)
         return "break"
+
+    # ====================== calificación de tareas ======================
+    def _guardar_tareas(self) -> None:
+        consulta = self._entrada_alumno.get().strip()
+        if not consulta:
+            self._error("Escribe un número de cuenta o un nombre.")
+            self._entrada_alumno.focus_set()
+            return
+        try:
+            puntos = leer_decimas(self._entrada_decimas.get())
+        except ValueError:
+            self._error("La calificación de tareas debe ser un número (por ejemplo 8.5 o 85).")
+            self._entrada_decimas.focus_set()
+            return
+
+        try:
+            if self._elegido:
+                resultado = self._servicio.registrar_tareas_para_alumno(
+                    self.curso.id, self._elegido.id, puntos
+                )
+            else:
+                resultado = self._servicio.registrar_tareas(self.curso.id, consulta, puntos)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+
+        if resultado.estado == EstadoRegistro.GUARDADO:
+            self._tareas_guardadas(resultado)
+        elif resultado.estado == EstadoRegistro.CONFIRMAR_REEMPLAZO:
+            self._advertir_reemplazo(
+                resultado.alumno, resultado.puntos,
+                f"Ya tiene {formatear_decimas(resultado.anterior.puntos)} en tareas; "
+                f"se cambiará a {formatear_decimas(resultado.puntos)}.",
+            )
+        elif resultado.estado == EstadoRegistro.AMBIGUO:
+            alumno = DialogoElegirAlumno(self, consulta, resultado.candidatos, self._tipos).mostrar()
+            if alumno:
+                self._elegido = alumno
+                self._guardar_tareas()
+            else:
+                self._info("Registro cancelado: había varias coincidencias.")
+        else:
+            self._ofrecer_alta_tareas(consulta, puntos, resultado)
+
+    def _ofrecer_alta_tareas(self, consulta: str, puntos: float, resultado: ResultadoTareas) -> None:
+        def crear_y_calificar(datos: dict) -> ResultadoTareas:
+            if datos["alumno_id"]:
+                self._servicio.inscribir_alumno_existente(self.curso.id, datos["alumno_id"], datos["tipo"])
+                alumno_id = datos["alumno_id"]
+            else:
+                alumno_id = self._servicio.crear_alumno_en_curso(
+                    self.curso.id, datos["nombre"], datos["tipo"], datos["cuenta"]
+                ).id
+            return self._servicio.registrar_tareas_para_alumno(self.curso.id, alumno_id, puntos)
+
+        creado = DialogoAlumnoNuevo(
+            self, crear_y_calificar, consulta, None, resultado.candidatos,
+            resumen_registro=f"tareas: {formatear_decimas(puntos)}",
+        ).mostrar()
+        if creado:
+            self._tareas_guardadas(creado, alumno_nuevo=True)
+        else:
+            self._info(f"Registro cancelado: «{consulta}» no está en este curso.")
+            self._entrada_alumno.focus_set()
+
+    def _confirmar_reemplazo_tareas(self) -> None:
+        alumno, puntos = self._pendiente
+        self._pendiente = None
+        try:
+            resultado = self._servicio.registrar_tareas_para_alumno(
+                self.curso.id, alumno.id, puntos, reemplazar=True
+            )
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        self._tareas_guardadas(resultado)
+
+    def _tareas_guardadas(self, resultado: ResultadoTareas, alumno_nuevo: bool = False) -> None:
+        nuevo = "  (alumno agregado)" if alumno_nuevo else ""
+        antes = (f"  (antes {formatear_decimas(resultado.anterior.puntos)})"
+                 if resultado.anterior else "")
+        self._exito(
+            f"{resultado.alumno.nombre_completo}  ·  Tareas: "
+            f"{formatear_decimas(resultado.puntos)}{antes}{nuevo}",
+            deshacible=True,
+        )
+        self._ultimo_registro = None
+        self._ultima_calificacion = None
+        self._ultima_tareas = (resultado.alumno.id, resultado.anterior)
+        self._pendiente = None
+        self._elegido = None
+        self._entrada_alumno.delete(0, "end")
+        self._entrada_decimas.delete(0, "end")
+        self._ocultar_sugerencias()
+        self.recargar()
+        self._resaltar(resultado.alumno.id)
+        self._entrada_alumno.focus_set()
+
+    def _deshacer_tareas(self) -> None:
+        alumno_id, anterior = self._ultima_tareas
+        self._ultima_tareas = None
+        try:
+            self._servicio.deshacer_tareas(self.curso.id, alumno_id, anterior)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        alumno = next((f.alumno for f in self._filas if f.alumno.id == alumno_id), None)
+        self.recargar()
+        self._info(
+            "Se deshizo la calificación de tareas" + (f" de {alumno.nombre_completo}." if alumno else ".")
+        )
+        self._entrada_alumno.focus_set()
 
     # ====================== alumnos ======================
     def agregar_alumno(self) -> None:
