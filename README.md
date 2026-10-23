@@ -27,6 +27,7 @@ examen(id, curso_id, nombre, nombre_norm)               -- único por curso+nomb
 calificacion(examen_id, alumno_id, puntos, fecha)       -- una por alumno y examen
 calificacion_tareas(curso_id, alumno_id, puntos, fecha) -- una por alumno y curso; promedio ya calculado fuera
 calificacion_proyecto(curso_id, alumno_id, puntos, fecha) -- una por alumno y curso; sin vínculo con el equipo
+ponderacion(curso_id, participaciones, examenes, tareas, proyecto) -- porcentajes de la calificación final por curso (sin fila: 10/0/20/40)
 equipo(curso_id, numero, nombre, proyecto)              -- equipos de proyecto (nombre y proyecto opcionales); no se borran al quedar vacíos
 miembro_equipo(curso_id, alumno_id, numero)             -- un alumno en un solo equipo por curso
 ```
@@ -72,13 +73,15 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 
 **Calificar el proyecto final.** En el modo Proyecto, con «Formar equipos» apagado, escribes la cuenta o el nombre de un alumno, o **«equipo N»** para todo un equipo (también puedes hacer clic en la fila del equipo o usar «Usar equipo N»), y la calificación del proyecto. Calificar a un equipo **copia la misma nota a cada miembro**; después puedes corregir a cada alumno por separado y nada se sincroniza solo. Si algún miembro ya tenía otra nota, la app avisa («2 de 4 miembros ya tienen calificación») y pide confirmar; «Deshacer» devuelve las notas previas de todos. Sin captura vale 0, no tiene tope y es independiente de décimas, exámenes y tareas.
 
+**Calificación final.** La columna **Final** (0–100, entera) y **Final /10** de la tabla suman, ponderados, cuatro componentes: las **participaciones** (cada décima vale 10 puntos), el **promedio de exámenes**, las **tareas** y el **proyecto final**. Las ponderaciones son por curso y se cambian con **«⚖ Ponderaciones»**: cada una va de 0 a 100 % y la suma puede pasar de 100 % (el excedente son puntos extra); el diálogo muestra la suma en vivo. Por omisión pesan 10 % las participaciones, 20 % las tareas y 40 % el proyecto, y los exámenes **0 % hasta que les asignas su ponderación**: al crear un examen la app te la pide (sugiere 30 %; si cancelas, te lo recuerda). Lo no capturado vale 0. La final nunca se guarda: se recalcula siempre y solo se redondea (la mitad hacia arriba) al mostrar o exportar.
+
 **Importar tareas desde un archivo.** Con «⬆ Importar tareas» eliges el `.xlsx` o `.csv` que descargas de la otra plataforma. La app reconoce a cada alumno por su nombre (o por número de cuenta si el archivo trae una columna «Cuenta») y te muestra una vista previa: qué columna importar (por omisión la del promedio), quién cambia («antes → después»), qué coincidencias son dudosas (solo se aplican si las marcas) y qué filas se omiten. Nunca crea alumnos ni toca a quienes el archivo no menciona. Al aplicar, puedes **deshacer la importación** completa.
 
 ### Exportar
-Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Tareas, Equipo, Proyecto, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Participaciones, Última, y hoja opcional «Participaciones» con el detalle) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
+Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Tareas, Equipo, Proyecto, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Calificación final, Participaciones, Última, y hoja opcional «Participaciones» con el detalle; el Excel indica las ponderaciones usadas) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
 
 ### Historial de un alumno
-- Tarjetas de resumen (total, número de registros, última participación).
+- Tarjetas de resumen (total, número de registros, última participación y **calificación final** con su equivalencia de 0 a 10) y una línea con el **desglose** de la final por componente.
 - Cada fila muestra el efecto real y el total acumulado; ⚑ marca los registros donde se aplicó el mínimo de 0.
 - Selector de curso (un alumno puede estar en varios).
 - Tabla de participaciones con fecha, décimas y nota; cada fila se puede editar o borrar.

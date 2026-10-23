@@ -30,7 +30,7 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 ### Checkpoint 1: Núcleo
 - [x] Suite completa en verde (599 pruebas previas intactas + 136 nuevas).
 - [x] Una base `.db` existente abre y conserva sus datos.
-- [ ] Revisión con la persona antes de seguir a la UI.
+- [x] Revisión con la persona antes de seguir a la UI.
 
 ## Fase 2: Pantalla Curso
 
@@ -67,8 +67,8 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ### Checkpoint 2: Pantalla Curso
 - [x] Suite completa en verde.
-- [ ] Flujo manual: crear un curso, capturar de todo, ver la final y cambiar ponderaciones; crear el primer examen y asignar su ponderación.
-- [ ] Revisión con la persona antes de seguir.
+- [x] Flujo manual: crear un curso, capturar de todo, ver la final y cambiar ponderaciones; crear el primer examen y asignar su ponderación.
+- [x] Revisión con la persona antes de seguir.
 
 ## Fase 3: Ver y exportar
 
@@ -92,14 +92,14 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 4: Cierre
 
-- [ ] **T8: Documentación y versión** (S)
+- [x] **T8: Documentación y versión** (S)
   - Descripción: `CLAUDE.md` (R18 completa, interfaz, exportación), `README.md`, versión 1.6.0 y ejecutable.
   - Aceptación:
-    - [ ] Documentación coherente con R18 y con lo construido.
-    - [ ] Suite completa en verde; `scripts\construir_exe.ps1` genera el ejecutable.
+    - [x] Documentación coherente con R18 y con lo construido.
+    - [x] Suite completa en verde; `scripts\construir_exe.ps1` genera el ejecutable.
   - Verificación: suite completa y `scripts\construir_exe.ps1`
   - Archivos: `CLAUDE.md`, `README.md`, `core/version.py`
   - Dependencias: T5, T6, T7
 
 ### Checkpoint 3: Listo
-- [ ] Listo para revisión y commit.
+- [x] Listo para revisión y commit.
