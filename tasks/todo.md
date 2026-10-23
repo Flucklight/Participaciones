@@ -56,18 +56,18 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`
   - Dependencias: T3
 
-- [ ] **T5: Separar con clic derecho** (S)
+- [x] **T5: Separar con clic derecho** (S)
   - Descripción: menú contextual «Separar del equipo N» sobre filas con equipo (una o varias seleccionadas), solo con «Formar equipos» activo, con deshacer.
   - Aceptación:
-    - [ ] Clic derecho en un miembro ofrece «Separar del equipo N» y lo deja sin equipo; con varias seleccionadas separa a todas.
-    - [ ] Sin equipo o en un encabezado no hay menú; si se separa a todos el equipo desaparece y su número no se reutiliza.
-    - [ ] «Deshacer» devuelve a los miembros a su equipo.
+    - [x] Clic derecho en un miembro ofrece «Separar del equipo N» y lo deja sin equipo; con varias seleccionadas separa a todas.
+    - [x] Sin equipo o en un encabezado no hay menú; si se separa a todos el equipo desaparece y su número no se reutiliza.
+    - [x] «Deshacer» devuelve a los miembros a su equipo.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_equipos.py -q`
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`
   - Dependencias: T4
 
 ### Checkpoint 2: Sección «Proyecto»
-- [ ] Suite completa en verde.
+- [x] Suite completa en verde (444 pasadas, 3 omitidas).
 - [ ] Flujo manual: formar equipos, ver los colores en claro y oscuro, separar, deshacer, F2 en cuatro modos.
 
 ## Fase 3: Cierre

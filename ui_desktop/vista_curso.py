@@ -292,6 +292,7 @@ class VistaCurso(ctk.CTkFrame):
         self._tabla.bind("<Double-1>", self._al_doble_clic)
         self._tabla.bind("<F2>", self._alternar_modo)
         self._tabla.bind("<<TreeviewSelect>>", self._al_seleccionar)
+        self._tabla.bind("<Button-3>", self._al_clic_derecho)
         barra = ctk.CTkScrollbar(marco, command=self._tabla.yview)
         # Con varios exámenes las columnas pueden no caber: la tabla se desplaza horizontalmente.
         barra_h = ctk.CTkScrollbar(marco, orientation="horizontal", command=self._tabla.xview)
@@ -1190,6 +1191,63 @@ class VistaCurso(ctk.CTkFrame):
         for iid in iids:
             if self._tabla.exists(iid):
                 self._tabla.item(iid, tags=tuple(t for t in self._tabla.item(iid, "tags") if t != "reciente"))
+
+    def _menu_separar(self, evento) -> tk.Menu | None:
+        """Menú del clic derecho: separar de su equipo a los alumnos elegidos. None si no aplica.
+
+        Solo con «Formar equipos» activo. Un clic derecho sobre una fila que no está seleccionada
+        la selecciona sola; sobre una seleccionada conserva la selección. Los alumnos sin equipo se
+        ignoran, y sin ninguno con equipo no hay menú.
+        """
+        if not self._formando:
+            return None
+        iid = self._tabla.identify_row(evento.y)
+        if not iid or es_encabezado(iid) or self._tabla.identify_region(evento.x, evento.y) == "heading":
+            return None
+        if iid not in self._tabla.selection():
+            self._tabla.selection_set(iid)
+        equipos = {f.alumno.id: f.equipo for f in self._filas if f.equipo is not None}
+        elegidos = [i for i in self._seleccionados() if i in equipos]
+        if not elegidos:
+            return None
+        numeros = sorted({equipos[i] for i in elegidos})
+        n = len(elegidos)
+        if len(numeros) > 1:
+            texto = f"Separar de sus equipos ({n} alumnos)"
+        else:
+            texto = f"Separar del equipo {numeros[0]}" + (f" ({n} alumnos)" if n > 1 else "")
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label=texto, command=lambda: self.separar(elegidos))
+        return menu
+
+    def _al_clic_derecho(self, evento) -> str:
+        menu = self._menu_separar(evento)
+        if menu is not None:
+            try:
+                menu.tk_popup(evento.x_root, evento.y_root)
+            finally:
+                menu.grab_release()
+        return "break"
+
+    def separar(self, alumno_ids: list[int]) -> None:
+        """Saca a los alumnos de su equipo (se puede deshacer)."""
+        try:
+            separados = self._servicio.separar_de_equipo(self.curso.id, alumno_ids)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        if not separados:
+            return
+        self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
+        self._ultima_importacion = None
+        self._ultima_equipo = ("separado", separados)
+        self.recargar()
+        self._resaltar_miembros(list(separados))
+        n = len(separados)
+        numeros = sorted(set(separados.values()))
+        de = f"del equipo {numeros[0]}" if len(numeros) == 1 else "de sus equipos"
+        self._exito(f"Se separó a {n} alumno{'s' if n != 1 else ''} {de}.", deshacible=True)
+        self._actualizar_barra()
 
     def _deshacer_equipo(self) -> None:
         tipo, dato = self._ultima_equipo
