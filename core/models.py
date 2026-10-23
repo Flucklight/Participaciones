@@ -133,6 +133,8 @@ class ResumenAlumno:
     equipo: int | None = None
     # Calificación del proyecto final; 0 si no se ha capturado.
     proyecto: float = 0.0
+    # Calificación final exacta (0–100, sin redondear); la calcula core/calificacion_final.py.
+    final: float = 0.0
 
 
 class EstadoRegistro(str, Enum):

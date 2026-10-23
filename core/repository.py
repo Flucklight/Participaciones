@@ -16,6 +16,7 @@ from .models import (
     ResumenAlumno,
     TipoInscripcion,
 )
+from .calificacion_final import Ponderaciones
 from .normalizacion import limpiar_nombre, normalizar
 from .promedio import promedio_examenes
 from .puntaje import total_con_piso
@@ -478,6 +479,23 @@ class Repositorio:
         return self._db.execute(
             "SELECT COUNT(*) FROM calificacion_proyecto WHERE curso_id = ?", (curso_id,)
         ).fetchone()[0]
+
+    # ---- ponderaciones de la calificación final ---------------------------------
+    def obtener_ponderaciones(self, curso_id: int) -> Ponderaciones | None:
+        """Las ponderaciones guardadas del curso, o None si nunca se guardaron."""
+        f = self._db.execute("SELECT * FROM ponderacion WHERE curso_id = ?", (curso_id,)).fetchone()
+        if f is None:
+            return None
+        return Ponderaciones(f["participaciones"], f["examenes"], f["tareas"], f["proyecto"])
+
+    def guardar_ponderaciones(self, curso_id: int, p: Ponderaciones) -> None:
+        self._db.execute(
+            "INSERT INTO ponderacion (curso_id, participaciones, examenes, tareas, proyecto)"
+            " VALUES (?, ?, ?, ?, ?) ON CONFLICT (curso_id) DO UPDATE SET"
+            " participaciones = excluded.participaciones, examenes = excluded.examenes,"
+            " tareas = excluded.tareas, proyecto = excluded.proyecto",
+            (curso_id, p.participaciones, p.examenes, p.tareas, p.proyecto),
+        )
 
     # ---- equipos de proyecto ----------------------------------------------
     def siguiente_numero_equipo(self, curso_id: int) -> int:

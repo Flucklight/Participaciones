@@ -70,6 +70,14 @@ CREATE TABLE IF NOT EXISTS calificacion_proyecto (
     PRIMARY KEY (curso_id, alumno_id)
 );
 
+CREATE TABLE IF NOT EXISTS ponderacion (
+    curso_id        INTEGER PRIMARY KEY REFERENCES curso(id) ON DELETE CASCADE,
+    participaciones REAL NOT NULL,
+    examenes        REAL NOT NULL,
+    tareas          REAL NOT NULL,
+    proyecto        REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS equipo (
     curso_id INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
     numero   INTEGER NOT NULL,

@@ -4,25 +4,25 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 1: Núcleo (sin UI)
 
-- [ ] **T1: Función pura de la calificación final** (S)
+- [x] **T1: Función pura de la calificación final** (S)
   - Descripción: `core/calificacion_final.py` con `Ponderaciones`, `calificacion_final`, el redondeo a entero (mitad hacia arriba), la equivalencia a 0–10 (un decimal) y el desglose por componente.
   - Aceptación:
-    - [ ] Participaciones aportan `décimas × 10`; 8 décimas, promedio 70, tareas 90, proyecto 85 con 10/30/20/40 da exactamente 81.
-    - [ ] Sin tope: 12 décimas aportan 12; suma de ponderaciones mayor o menor de 100 % válida; ponderación 0 anula un componente.
-    - [ ] Redondeo mitad hacia arriba (87.5 → 88, 2.5 → 3, 0.5 → 1, 87.49 → 87) y robusto ante error binario; la equivalencia /10 da un decimal (81 → 8.1).
-    - [ ] Sin exámenes (promedio `None`) el componente aporta 0; el desglose suma la final exacta.
+    - [x] Participaciones aportan `décimas × 10`; 8 décimas, promedio 70, tareas 90, proyecto 85 con 10/30/20/40 da exactamente 81.
+    - [x] Sin tope: 12 décimas aportan 12; suma de ponderaciones mayor o menor de 100 % válida; ponderación 0 anula un componente.
+    - [x] Redondeo mitad hacia arriba (87.5 → 88, 2.5 → 3, 0.5 → 1, 87.49 → 87) y robusto ante error binario; la equivalencia /10 da un decimal (81 → 8.1).
+    - [x] Sin exámenes (promedio `None`) el componente aporta 0; el desglose suma la final exacta.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_calificacion_final.py -q`
   - Archivos: `core/calificacion_final.py`, `tests/test_calificacion_final.py`
   - Dependencias: ninguna
 
-- [ ] **T2: Ponderaciones por curso y final en el resumen** (M)
+- [x] **T2: Ponderaciones por curso y final en el resumen** (M)
   - Descripción: tabla `ponderacion`, repositorio, servicio (`ponderaciones_de`, `establecer_ponderaciones` con validación, `restablecer_ponderaciones`, `desglose_final`, `ponderacion_examenes_pendiente`), `ResumenAlumno.final` y R18 más el modelo en `CLAUDE.md` antes de seguir.
   - Aceptación:
-    - [ ] Sin fila: 10 / 0 / 20 / 40; con fila: lo guardado; una fila con exámenes en 0 % se distingue de «sin fila».
-    - [ ] Validación: negativo, mayor de 100, `nan`, `inf` y texto lanzan `ErrorDominio`; la suma puede pasar de 100.
-    - [ ] `resumen_curso` trae `final` exacto y cambia al cambiar ponderaciones o cualquier componente; el piso de 0 de las décimas se respeta.
-    - [ ] `ponderacion_examenes_pendiente` es verdadero solo si el curso tiene exámenes y no hay fila guardada.
-    - [ ] Nada se guarda de la final; décimas, exámenes, tareas y proyecto no cambian; borrar el curso borra su fila; una base existente abre y conserva sus datos.
+    - [x] Sin fila: 10 / 0 / 20 / 40; con fila: lo guardado; una fila con exámenes en 0 % se distingue de «sin fila».
+    - [x] Validación: negativo, mayor de 100, `nan`, `inf` y texto lanzan `ErrorDominio`; la suma puede pasar de 100.
+    - [x] `resumen_curso` trae `final` exacto y cambia al cambiar ponderaciones o cualquier componente; el piso de 0 de las décimas se respeta.
+    - [x] `ponderacion_examenes_pendiente` es verdadero solo si el curso tiene exámenes y no hay fila guardada.
+    - [x] Nada se guarda de la final; décimas, exámenes, tareas y proyecto no cambian; borrar el curso borra su fila; una base existente abre y conserva sus datos.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_calificacion_final.py tests/test_cursos.py -q`
   - Archivos: `core/database.py`, `core/models.py`, `core/repository.py`, `core/services.py`, `CLAUDE.md`, `tests/test_calificacion_final.py`
   - Dependencias: T1

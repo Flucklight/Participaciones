@@ -33,6 +33,7 @@ examen(id, curso_id, nombre, nombre_norm)  -- único por curso+nombre_norm; sin 
 calificacion(examen_id, alumno_id, puntos, fecha)  -- una por alumno y examen (PK compuesta)
 calificacion_tareas(curso_id, alumno_id, puntos, fecha)  -- una por alumno y curso (PK compuesta); promedio ya calculado fuera
 calificacion_proyecto(curso_id, alumno_id, puntos, fecha)  -- una por alumno y curso (PK compuesta); sin vínculo con el equipo
+ponderacion(curso_id PK, participaciones, examenes, tareas, proyecto)  -- porcentajes de la calificación final por curso; sin fila = 10/0/20/40; nunca se guarda la calificación final
 equipo(curso_id, numero, nombre, proyecto)  -- equipos de proyecto; nombre y título del proyecto opcionales ('' si no hay); no se borran al quedar vacíos (así el número no se reutiliza)
 miembro_equipo(curso_id, alumno_id, numero)  -- un alumno en un solo equipo por curso (PK compuesta)
 ```
@@ -103,6 +104,13 @@ miembro_equipo(curso_id, alumno_id, numero)  -- un alumno en un solo equipo por 
    - Una por **alumno** y curso, `>= 0` (decimales permitidos; negativos rechazados), **sin tope**. Sin captura vale 0.
    - Se captura a **un alumno** (cuenta o nombre, como siempre) o a **un equipo** escribiendo «equipo N» (también «e N»; un número solo sigue siendo número de cuenta): calificar a un equipo **copia la misma nota a cada miembro**. No se guarda ningún vínculo nota–equipo: sacar, agregar o corregir a alguien después no cambia las notas de los demás.
    - Si algún alumno afectado ya tiene una nota **distinta** de la nueva (las iguales no cuentan) no se guarda nada hasta confirmar el reemplazo; con un equipo se avisa «N de M miembros ya tienen calificación». «Deshacer» restaura las notas previas de **todos** los afectados (o las elimina si no había). Los oyentes pueden tenerla y se excluyen de la exportación por defecto. Eliminar un curso la borra (el diálogo informa cuántas se pierden).
+
+18. **Calificación final** (`core/calificacion_final.py`, única fuente del cálculo; el servicio la usa, la UI y el exportador no la recalculan; **nunca se guarda**):
+   - Es una **suma ponderada** de cuatro componentes en escala de 0 a 100: **participaciones** (el total con piso de 0 de R5 × 10: 1 décima = 10 puntos; 10 décimas = 100 puntos = calificación 10), **promedio de exámenes** (R13), **tareas** (R14) y **proyecto** (R17) tal cual se capturaron. `final = Σ componente × ponderación / 100`, sin tope: los componentes y la suma pueden pasar de 100 (puntos extra).
+   - Las **ponderaciones son por curso**, cada una de 0 a 100 %, con decimales; **la suma puede ser cualquiera** (más de 100 % son puntos extra). Un curso sin ponderaciones guardadas usa **participaciones 10 %, exámenes 0 %, tareas 20 % y proyecto 40 %**: los exámenes pesan 0 hasta que se asigna su ponderación (al crear un examen la app lo pide; sugiere 30 %). Guardar 0 % en exámenes explícitamente cuenta como asignado.
+   - Sin exámenes no hay promedio y ese componente aporta 0 (su peso no se redistribuye); lo no capturado vale 0.
+   - **Redondeo solo al mostrar y exportar**: entero con la mitad hacia arriba (87.5 → 88; no el redondeo por banca de Python) y equivalencia de 0 a 10 con un decimal (81 → 8.1) calculada del valor exacto. Ordenar usa el valor exacto.
+   - Cambiar las ponderaciones o cualquier componente recalcula la final de inmediato; no modifica décimas, exámenes, tareas ni proyecto.
 
 ## Interfaz
 - **Paleta** (`ui_desktop/tema.py`, único lugar con colores; las vistas usan sus nombres, nunca hex ni `gray`): azul de la FES Aragón = marca y participaciones; **índigo = modo Examen** (vecino del azul, se distingue sin chocar); **verde azulado = modo Tareas**; **ciruela = modo Proyecto** (y dos tonos alternados, azul-gris y ciruela pálido, para agrupar los equipos en la tabla); verde = éxito, rojo = peligro, ámbar = avisos. Cada color es un par (claro, oscuro); los rellenos llevan texto blanco, el texto de enlaces usa `COLOR_ACENTO_TEXTO`.

@@ -9,6 +9,7 @@ from collections import Counter
 from collections.abc import Iterable
 from datetime import date
 
+from .calificacion_final import POR_OMISION, DesgloseFinal, Ponderaciones, calificacion_final, desglose_final
 from .errores import ErrorDominio
 from .models import (
     Alumno,
@@ -135,7 +136,55 @@ class ServicioParticipaciones:
     # ================= alumnos =================
     def resumen_curso(self, curso_id: int) -> list[ResumenAlumno]:
         self._curso_o_error(curso_id)
-        return self._repo.resumen_curso(curso_id)
+        filas = self._repo.resumen_curso(curso_id)
+        pesos = self.ponderaciones_de(curso_id)
+        for f in filas:  # la final nunca se guarda: se calcula con lo que hay y las ponderaciones del curso
+            f.final = calificacion_final(f.total, f.prom_examenes, f.tareas, f.proyecto, pesos)
+        return filas
+
+    # ================= calificación final =================
+    def ponderaciones_de(self, curso_id: int) -> Ponderaciones:
+        """Las ponderaciones del curso; sin ninguna guardada, las de omisión (10 / 0 / 20 / 40)."""
+        return self._repo.obtener_ponderaciones(curso_id) or POR_OMISION
+
+    def establecer_ponderaciones(
+        self, curso_id: int, participaciones: float, examenes: float, tareas: float, proyecto: float
+    ) -> Ponderaciones:
+        """Guarda las ponderaciones del curso: cada una de 0 a 100 %; la suma puede pasar de 100."""
+        self._curso_o_error(curso_id)
+        pesos = Ponderaciones(
+            self._porcentaje_validado(participaciones, "participaciones"),
+            self._porcentaje_validado(examenes, "exámenes"),
+            self._porcentaje_validado(tareas, "tareas"),
+            self._porcentaje_validado(proyecto, "proyecto"),
+        )
+        with self._repo.transaccion():
+            self._repo.guardar_ponderaciones(curso_id, pesos)
+        return pesos
+
+    @staticmethod
+    def _porcentaje_validado(valor: float, nombre: str) -> float:
+        try:
+            numero = float(valor)
+        except (TypeError, ValueError):
+            raise ErrorDominio(f"La ponderación de {nombre} debe ser un número entre 0 y 100.") from None
+        if not math.isfinite(numero) or not 0 <= numero <= 100:
+            raise ErrorDominio(f"La ponderación de {nombre} debe ser un número entre 0 y 100.")
+        return numero
+
+    def ponderacion_examenes_pendiente(self, curso_id: int) -> bool:
+        """¿El curso ya tiene exámenes y nunca se asignó su ponderación? (hay que recordarlo)."""
+        self._curso_o_error(curso_id)
+        return self._repo.contar_examenes_curso(curso_id) > 0 and self._repo.obtener_ponderaciones(curso_id) is None
+
+    def desglose_final(self, curso_id: int, alumno_id: int) -> DesgloseFinal:
+        """Los cuatro componentes de la calificación final de un alumno, con su aporte."""
+        fila = next((f for f in self.resumen_curso(curso_id) if f.alumno.id == alumno_id), None)
+        if fila is None:
+            raise ErrorDominio("El alumno no está inscrito en este curso.")
+        return desglose_final(
+            fila.total, fila.prom_examenes, fila.tareas, fila.proyecto, self.ponderaciones_de(curso_id)
+        )
 
     def buscar_alumnos_en_curso(self, curso_id: int, consulta: str) -> list[Alumno]:
         """Para el autocompletado del registro rápido."""
