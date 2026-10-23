@@ -4,42 +4,42 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 1: Núcleo (sin UI)
 
-- [ ] **T1: Tabla, modelos y regla documentada** (S)
+- [x] **T1: Tabla, modelos y regla documentada** (S)
   - Descripción: crear `calificacion_proyecto`, las dataclasses `CalificacionProyecto` y `ResultadoProyecto`, `ResumenAlumno.proyecto`, y documentar R17 y el modelo en `CLAUDE.md` antes de seguir.
   - Aceptación:
-    - [ ] `conectar()` crea la tabla en una base nueva y en una existente sin perder datos.
-    - [ ] Una calificación por `(curso_id, alumno_id)`; borrar curso o alumno la borra en cascada.
-    - [ ] `CLAUDE.md` tiene el modelo y R17.
+    - [x] `conectar()` crea la tabla en una base nueva y en una existente sin perder datos.
+    - [x] Una calificación por `(curso_id, alumno_id)`; borrar curso o alumno la borra en cascada.
+    - [x] `CLAUDE.md` tiene el modelo y R17.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_proyecto.py -q`
   - Archivos: `core/database.py`, `core/models.py`, `CLAUDE.md`, `tests/test_proyecto.py`
   - Dependencias: ninguna
 
-- [ ] **T2: Servicio para un alumno** (M)
+- [x] **T2: Servicio para un alumno** (M)
   - Descripción: registrar (misma identificación que tareas), reemplazo en dos pasos, deshacer, establecer y eliminar desde el historial, `proyecto` en el resumen del curso y conteo al eliminar un curso. Un solo camino de guardado/deshacer que el equipo reutilizará.
   - Aceptación:
-    - [ ] Negativo, `nan` y texto lanzan `ErrorDominio`; 0 y puntos extra se aceptan.
-    - [ ] Si ya existe una nota distinta, devuelve `CONFIRMAR_REEMPLAZO` con la anterior y no guarda hasta repetir con `reemplazar=True`.
-    - [ ] Deshacer restaura la anterior o elimina la calificación si no había.
-    - [ ] Ambiguo y «no existe» se comportan como en tareas; alumno no inscrito se rechaza.
-    - [ ] `resumen_curso` trae `proyecto` (0 sin captura); no cambia décimas, exámenes ni tareas.
+    - [x] Negativo, `nan` y texto lanzan `ErrorDominio`; 0 y puntos extra se aceptan.
+    - [x] Si ya existe una nota distinta, devuelve `CONFIRMAR_REEMPLAZO` con la anterior y no guarda hasta repetir con `reemplazar=True`.
+    - [x] Deshacer restaura la anterior o elimina la calificación si no había.
+    - [x] Ambiguo y «no existe» se comportan como en tareas; alumno no inscrito se rechaza.
+    - [x] `resumen_curso` trae `proyecto` (0 sin captura); no cambia décimas, exámenes ni tareas.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_proyecto.py tests/test_tareas.py -q`
   - Archivos: `core/services.py`, `core/repository.py`, `core/models.py`, `tests/test_proyecto.py`
   - Dependencias: T1
 
-- [ ] **T3: Servicio para un equipo** (M)
+- [x] **T3: Servicio para un equipo** (M)
   - Descripción: reconocer «equipo N» / «e N» en la consulta, copiar la nota a todos los miembros, advertencia «N de M miembros ya tienen otra calificación», deshacer de todos.
   - Aceptación:
-    - [ ] «equipo 3», «Equipo 3» y «e 3» califican a todo el equipo 3; un número solo sigue siendo cuenta; equipo inexistente o sin miembros se rechaza con mensaje claro.
-    - [ ] Sin miembros con otra nota se guarda de inmediato; si alguno tiene otra distinta devuelve `CONFIRMAR_REEMPLAZO` con el conteo `N de M` y no guarda; las notas iguales no cuentan.
-    - [ ] `deshacer_proyecto` devuelve a **todos** sus notas previas (o las elimina).
-    - [ ] Corregir a un alumno no cambia al resto; sacar o agregar a alguien al equipo no cambia notas.
+    - [x] «equipo 3», «Equipo 3» y «e 3» califican a todo el equipo 3; un número solo sigue siendo cuenta; equipo inexistente o sin miembros se rechaza con mensaje claro.
+    - [x] Sin miembros con otra nota se guarda de inmediato; si alguno tiene otra distinta devuelve `CONFIRMAR_REEMPLAZO` con el conteo `N de M` y no guarda; las notas iguales no cuentan.
+    - [x] `deshacer_proyecto` devuelve a **todos** sus notas previas (o las elimina).
+    - [x] Corregir a un alumno no cambia al resto; sacar o agregar a alguien al equipo no cambia notas.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_proyecto.py tests/test_equipos.py -q`
   - Archivos: `core/services.py`, `core/models.py`, `tests/test_proyecto.py`
   - Dependencias: T2
 
 ### Checkpoint 1: Núcleo
-- [ ] Suite completa en verde (472 pruebas previas intactas).
-- [ ] Una base `.db` existente abre y conserva sus datos.
+- [x] Suite completa en verde (472 pruebas previas intactas + 39 nuevas).
+- [x] Una base `.db` existente abre y conserva sus datos.
 - [ ] Revisión con la persona antes de seguir a la UI.
 
 ## Fase 2: Modo evaluar

@@ -8,6 +8,7 @@ from datetime import date
 from .models import (
     Alumno,
     Calificacion,
+    CalificacionProyecto,
     CalificacionTareas,
     Curso,
     Examen,
@@ -57,6 +58,15 @@ def _examen(fila: sqlite3.Row) -> Examen:
 def _calificacion(fila: sqlite3.Row) -> Calificacion:
     return Calificacion(
         examen_id=fila["examen_id"],
+        alumno_id=fila["alumno_id"],
+        puntos=fila["puntos"],
+        fecha=date.fromisoformat(fila["fecha"]),
+    )
+
+
+def _proyecto(fila: sqlite3.Row) -> CalificacionProyecto:
+    return CalificacionProyecto(
+        curso_id=fila["curso_id"],
         alumno_id=fila["alumno_id"],
         puntos=fila["puntos"],
         fecha=date.fromisoformat(fila["fecha"]),
@@ -238,6 +248,7 @@ class Repositorio:
         puntos = self.puntos_por_alumno(curso_id)
         tareas = self.tareas_por_alumno(curso_id)
         equipos = self.equipos_por_alumno(curso_id)
+        proyecto = self.proyecto_por_alumno(curso_id)
         filas = self._db.execute(
             "SELECT a.id, a.num_cuenta, a.nombre_completo, i.tipo,"
             "       COUNT(p.id) AS n, MAX(p.fecha) AS ultima"
@@ -262,6 +273,7 @@ class Repositorio:
                 calificaciones=dict(puntos.get(f["id"], {})),
                 tareas=tareas.get(f["id"], 0.0),
                 equipo=equipos.get(f["id"]),
+                proyecto=proyecto.get(f["id"], 0.0),
             )
             for f in filas
         ]
@@ -431,6 +443,41 @@ class Repositorio:
             "SELECT alumno_id, puntos FROM calificacion_tareas WHERE curso_id = ?", (curso_id,)
         )
         return {f["alumno_id"]: f["puntos"] for f in filas}
+
+    # ---- calificación del proyecto final ----------------------------------------
+    def obtener_proyecto(self, curso_id: int, alumno_id: int) -> CalificacionProyecto | None:
+        fila = self._db.execute(
+            "SELECT * FROM calificacion_proyecto WHERE curso_id = ? AND alumno_id = ?",
+            (curso_id, alumno_id),
+        ).fetchone()
+        return _proyecto(fila) if fila else None
+
+    def guardar_proyecto(self, c: CalificacionProyecto) -> None:
+        """Alta o reemplazo: hay una sola calificación de proyecto por alumno y curso."""
+        self._db.execute(
+            "INSERT INTO calificacion_proyecto (curso_id, alumno_id, puntos, fecha) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (curso_id, alumno_id) DO UPDATE SET puntos = excluded.puntos,"
+            " fecha = excluded.fecha",
+            (c.curso_id, c.alumno_id, c.puntos, c.fecha.isoformat()),
+        )
+
+    def eliminar_proyecto(self, curso_id: int, alumno_id: int) -> None:
+        self._db.execute(
+            "DELETE FROM calificacion_proyecto WHERE curso_id = ? AND alumno_id = ?",
+            (curso_id, alumno_id),
+        )
+
+    def proyecto_por_alumno(self, curso_id: int) -> dict[int, float]:
+        """{alumno_id: puntos} de los alumnos del curso con calificación de proyecto capturada."""
+        filas = self._db.execute(
+            "SELECT alumno_id, puntos FROM calificacion_proyecto WHERE curso_id = ?", (curso_id,)
+        )
+        return {f["alumno_id"]: f["puntos"] for f in filas}
+
+    def contar_proyecto_curso(self, curso_id: int) -> int:
+        return self._db.execute(
+            "SELECT COUNT(*) FROM calificacion_proyecto WHERE curso_id = ?", (curso_id,)
+        ).fetchone()[0]
 
     # ---- equipos de proyecto ----------------------------------------------
     def siguiente_numero_equipo(self, curso_id: int) -> int:

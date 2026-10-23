@@ -62,6 +62,14 @@ CREATE TABLE IF NOT EXISTS calificacion_tareas (
     PRIMARY KEY (curso_id, alumno_id)
 );
 
+CREATE TABLE IF NOT EXISTS calificacion_proyecto (
+    curso_id  INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
+    alumno_id INTEGER NOT NULL REFERENCES alumno(id) ON DELETE CASCADE,
+    puntos    REAL NOT NULL,
+    fecha     TEXT NOT NULL,
+    PRIMARY KEY (curso_id, alumno_id)
+);
+
 CREATE TABLE IF NOT EXISTS equipo (
     curso_id INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
     numero   INTEGER NOT NULL,

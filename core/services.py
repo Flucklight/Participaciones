@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import sqlite3
 from collections import Counter
 from collections.abc import Iterable
@@ -13,6 +14,7 @@ from .models import (
     Alumno,
     ArchivoCalificaciones,
     Calificacion,
+    CalificacionProyecto,
     CalificacionTareas,
     CoincidenciaOyente,
     Curso,
@@ -30,6 +32,7 @@ from .models import (
     ResultadoEquipo,
     ResultadoImportacion,
     ResultadoImportacionTareas,
+    ResultadoProyecto,
     ResultadoRegistro,
     ResultadoTareas,
     ResumenAlumno,
@@ -93,6 +96,11 @@ class ServicioParticipaciones:
         """Cuántas calificaciones de tareas se perderían al eliminar el curso."""
         self._curso_o_error(curso_id)
         return self._repo.contar_tareas_curso(curso_id)
+
+    def resumen_eliminacion_proyecto(self, curso_id: int) -> int:
+        """Cuántas calificaciones de proyecto se perderían al eliminar el curso."""
+        self._curso_o_error(curso_id)
+        return self._repo.contar_proyecto_curso(curso_id)
 
     def eliminar_curso(self, curso_id: int) -> None:
         """Eliminación definitiva. La confirmación es responsabilidad de la UI.
@@ -648,6 +656,119 @@ class ServicioParticipaciones:
         oyente.num_cuenta = num_cuenta
         self._repo.actualizar_alumno(oyente)
         return oyente
+
+    # ================= calificación del proyecto final =================
+    _EQUIPO_EN_CONSULTA = re.compile(r"\s*(?:equipo|e)\s*(\d+)\s*", re.IGNORECASE)
+
+    @classmethod
+    def _equipo_en_consulta(cls, consulta: str) -> int | None:
+        """«equipo 3», «Equipo 3» o «e 3» → 3. Un número solo es un número de cuenta, no un equipo."""
+        coincidencia = cls._EQUIPO_EN_CONSULTA.fullmatch(consulta)
+        return int(coincidencia.group(1)) if coincidencia else None
+
+    def registrar_proyecto(
+        self,
+        curso_id: int,
+        consulta: str,
+        puntos: float,
+        fecha: date | None = None,
+        reemplazar: bool = False,
+    ) -> ResultadoProyecto:
+        """Registro rápido del proyecto: «equipo N» califica a todo el equipo; si no, identifica
+        al alumno igual que `registrar` y califica solo a ese alumno."""
+        self._curso_o_error(curso_id)
+        puntos = self._puntos_validados(puntos)
+        numero = self._equipo_en_consulta(consulta)
+        if numero is not None:
+            return self.registrar_proyecto_equipo(curso_id, numero, puntos, fecha, reemplazar)
+        alumno, estado, candidatos = self._identificar(curso_id, consulta)
+        if alumno:
+            return self.registrar_proyecto_para_alumno(curso_id, alumno.id, puntos, fecha, reemplazar)
+        return ResultadoProyecto(estado, puntos, candidatos=candidatos)
+
+    def registrar_proyecto_para_alumno(
+        self,
+        curso_id: int,
+        alumno_id: int,
+        puntos: float,
+        fecha: date | None = None,
+        reemplazar: bool = False,
+    ) -> ResultadoProyecto:
+        """Califica el proyecto de un alumno ya identificado (inscrito en el curso)."""
+        self._curso_o_error(curso_id)
+        puntos = self._puntos_validados(puntos)
+        alumno = self._alumno_o_error(alumno_id)
+        if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
+            raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
+        return self._aplicar_proyecto(curso_id, [alumno], puntos, fecha, reemplazar, equipo=None)
+
+    def registrar_proyecto_equipo(
+        self,
+        curso_id: int,
+        numero: int,
+        puntos: float,
+        fecha: date | None = None,
+        reemplazar: bool = False,
+    ) -> ResultadoProyecto:
+        """Copia la misma calificación a todos los miembros del equipo (no queda vínculo: lo que
+        pase después con el equipo no cambia las notas)."""
+        self._curso_o_error(curso_id)
+        puntos = self._puntos_validados(puntos)
+        miembros = self._repo.miembros_por_equipo(curso_id).get(numero)
+        if not miembros:
+            raise ErrorDominio(f"El equipo {numero} no existe o no tiene miembros.")
+        return self._aplicar_proyecto(curso_id, miembros, puntos, fecha, reemplazar, equipo=numero)
+
+    def _aplicar_proyecto(
+        self,
+        curso_id: int,
+        alumnos: list[Alumno],
+        puntos: float,
+        fecha: date | None,
+        reemplazar: bool,
+        equipo: int | None,
+    ) -> ResultadoProyecto:
+        """Un solo camino para un alumno o un equipo. Si alguno ya tiene una nota distinta de la
+        nueva no guarda nada hasta repetir con `reemplazar=True` (las iguales no cuentan)."""
+        anteriores = {a.id: self._repo.obtener_proyecto(curso_id, a.id) for a in alumnos}
+        con_otra = sum(1 for a in anteriores.values() if a is not None and a.puntos != puntos)
+        if con_otra and not reemplazar:
+            return ResultadoProyecto(
+                EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumnos, equipo, con_otra, anteriores
+            )
+        fecha = fecha or date.today()
+        with self._repo.transaccion():
+            for alumno in alumnos:
+                self._repo.guardar_proyecto(CalificacionProyecto(curso_id, alumno.id, puntos, fecha))
+        return ResultadoProyecto(EstadoRegistro.GUARDADO, puntos, alumnos, equipo, 0, anteriores)
+
+    def deshacer_proyecto(
+        self, curso_id: int, anteriores: dict[int, CalificacionProyecto | None]
+    ) -> None:
+        """Deja a cada alumno con la calificación que tenía (o sin ella si no tenía)."""
+        with self._repo.transaccion():
+            for alumno_id, anterior in anteriores.items():
+                if anterior is None:
+                    self._repo.eliminar_proyecto(curso_id, alumno_id)
+                else:
+                    self._repo.guardar_proyecto(anterior)
+
+    def proyecto_de(self, curso_id: int, alumno_id: int) -> CalificacionProyecto | None:
+        return self._repo.obtener_proyecto(curso_id, alumno_id)
+
+    def establecer_proyecto(
+        self, curso_id: int, alumno_id: int, puntos: float, fecha: date
+    ) -> CalificacionProyecto:
+        """Alta o corrección desde el historial (la persona ya eligió y confirmó)."""
+        self.registrar_proyecto_para_alumno(curso_id, alumno_id, puntos, fecha, reemplazar=True)
+        return self._repo.obtener_proyecto(curso_id, alumno_id)
+
+    def eliminar_proyecto(self, curso_id: int, alumno_id: int) -> None:
+        """Quita la calificación: el proyecto vuelve a valer 0. La confirmación es de la UI."""
+        if self._repo.obtener_proyecto(curso_id, alumno_id) is None:
+            raise ErrorDominio("Este alumno no tiene calificación de proyecto.")
+        with self._repo.transaccion():
+            self._repo.eliminar_proyecto(curso_id, alumno_id)
 
     # ================= equipos de proyecto =================
     def formar_equipo(self, curso_id: int, alumno_ids: list[int]) -> ResultadoEquipo:

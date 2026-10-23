@@ -68,6 +68,17 @@ class Calificacion:
 
 
 @dataclass
+class CalificacionProyecto:
+    """Calificación del proyecto final de un alumno en un curso (una por alumno y curso; sin tope).
+    Calificar a un equipo copia la misma nota a cada miembro: no se guarda vínculo con el equipo."""
+
+    curso_id: int
+    alumno_id: int
+    puntos: float
+    fecha: date
+
+
+@dataclass
 class CalificacionTareas:
     """Calificación de tareas de un alumno en un curso: el promedio ya calculado en otra
     plataforma (una por alumno y curso; sin tope)."""
@@ -120,6 +131,8 @@ class ResumenAlumno:
     tareas: float = 0.0
     # Número de equipo de proyecto (None si no tiene).
     equipo: int | None = None
+    # Calificación del proyecto final; 0 si no se ha capturado.
+    proyecto: float = 0.0
 
 
 class EstadoRegistro(str, Enum):
@@ -178,6 +191,23 @@ class ResultadoEquipo:
     miembros: list[Alumno] = field(default_factory=list)
     # Con YA_TIENEN_EQUIPO: quién ya tenía equipo y cuál (no se movió ni se creó nada).
     con_equipo: list[tuple[Alumno, int]] = field(default_factory=list)
+
+
+@dataclass
+class ResultadoProyecto:
+    """Resultado de calificar el proyecto a un alumno o a todo un equipo."""
+
+    estado: EstadoRegistro
+    puntos: float
+    alumnos: list[Alumno] = field(default_factory=list)  # a quién(es) se aplica o se aplicaría
+    equipo: int | None = None  # el equipo, si se calificó a uno
+    # Con CONFIRMAR_REEMPLAZO: cuántos de `alumnos` ya tienen una calificación distinta de la nueva
+    # (todavía no se guardó nada).
+    con_otra: int = 0
+    # {alumno_id: calificación que había (None si no había)} de todos los afectados; con GUARDADO es
+    # lo que `deshacer_proyecto` restaura.
+    anteriores: dict[int, CalificacionProyecto | None] = field(default_factory=dict)
+    candidatos: list[Alumno] = field(default_factory=list)
 
 
 @dataclass
