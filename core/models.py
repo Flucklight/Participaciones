@@ -158,6 +158,7 @@ class ResultadoCalificacion:
 
 class EstadoEquipo(str, Enum):
     FORMADO = "formado"
+    AGREGADO = "agregado"  # alumnos sumados a un equipo que ya existía
     YA_TIENEN_EQUIPO = "ya_tienen_equipo"  # no se creó nada: alguien ya está en otro equipo
 
 

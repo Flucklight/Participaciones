@@ -218,18 +218,30 @@ class VistaCurso(ctk.CTkFrame):
         # Solo visible en modo Proyecto: herramientas de equipo (la tabla es el selector de alumnos).
         self._formando = False
         self._fila_equipos = ctk.CTkFrame(marco, fg_color="transparent")
+        fila_formar = ctk.CTkFrame(self._fila_equipos, fg_color="transparent")
+        fila_formar.pack(anchor="w")
         self._boton_formar = ctk.CTkButton(
-            self._fila_equipos, text="Formar equipos", width=150, height=34, command=self.alternar_formar,
+            fila_formar, text="Formar equipos", width=150, height=34, command=self.alternar_formar,
             fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
             text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
         )
         self._boton_formar.pack(side="left")
-        self._etiqueta_seleccion = ctk.CTkLabel(self._fila_equipos, text="", text_color=tema.COLOR_TEXTO_SUAVE)
+        self._etiqueta_seleccion = ctk.CTkLabel(fila_formar, text="", text_color=tema.COLOR_TEXTO_SUAVE)
         self._etiqueta_seleccion.pack(side="left", padx=14)
+        # Solo formando: justo debajo del botón «Formar equipos», alineadas a la izquierda.
+        self._acciones_equipo = ctk.CTkFrame(self._fila_equipos, fg_color="transparent")
         self._boton_crear_equipo = ctk.CTkButton(
-            self._fila_equipos, text="Crear equipo", width=210, height=34, command=self.crear_equipo,
+            self._acciones_equipo, text="Crear equipo", width=210, height=34, command=self.crear_equipo,
             fg_color=tema.COLOR_PROYECTO, hover_color=tema.COLOR_PROYECTO_HOVER, state="disabled",
         )
+        self._boton_crear_equipo.pack(side="left")
+        self._boton_sacar_equipo = ctk.CTkButton(
+            self._acciones_equipo, text="Sacar de equipo", width=170, height=34,
+            command=self.sacar_de_equipo, state="disabled",
+            fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
+            text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
+        )
+        self._boton_sacar_equipo.pack(side="left", padx=(8, 0))
 
         # Sugerencias en línea (debajo de la fila), ocultas hasta que haya coincidencias.
         self._caja_sugerencias = ctk.CTkFrame(marco, fg_color="transparent")
@@ -293,6 +305,7 @@ class VistaCurso(ctk.CTkFrame):
         self._tabla.bind("<F2>", self._alternar_modo)
         self._tabla.bind("<<TreeviewSelect>>", self._al_seleccionar)
         self._tabla.bind("<Button-3>", self._al_clic_derecho)
+        self._tabla.bind("<Button-1>", self._al_presionar_tabla)
         barra = ctk.CTkScrollbar(marco, command=self._tabla.yview)
         # Con varios exámenes las columnas pueden no caber: la tabla se desplaza horizontalmente.
         barra_h = ctk.CTkScrollbar(marco, orientation="horizontal", command=self._tabla.xview)
@@ -446,8 +459,29 @@ class VistaCurso(ctk.CTkFrame):
         if fila:
             self._elegir(fila.alumno)
 
+    def _al_presionar_tabla(self, evento) -> str | None:
+        """Formando equipos, un clic en un alumno lo suma o lo quita de la selección (sin Ctrl).
+
+        Mayús y Ctrl conservan el comportamiento normal de la tabla (rango y alternar); el clic en
+        el encabezado de una columna sigue ordenando. Fuera de ese modo no se interviene.
+        """
+        if not self._formando or evento.state & 0x5:
+            return None
+        if self._tabla.identify_region(evento.x, evento.y) == "heading":
+            return None
+        iid = self._tabla.identify_row(evento.y)
+        if iid and not es_encabezado(iid):
+            if iid in self._tabla.selection():
+                self._tabla.selection_remove(iid)
+            else:
+                self._tabla.selection_add(iid)
+        self._tabla.focus_set()
+        return "break"
+
     def _al_doble_clic(self, evento) -> None:
         """Doble clic en una fila abre el historial de ese alumno."""
+        if self._formando:  # formando equipos cada clic selecciona; el doble clic no debe abrir nada
+            return
         iid = self._tabla.identify_row(evento.y)
         if iid and not es_encabezado(iid) and self._tabla.identify_region(evento.x, evento.y) != "heading":
             self._app.abrir_historial(self.curso.id, int(iid))
@@ -1112,7 +1146,7 @@ class VistaCurso(ctk.CTkFrame):
         self._formando = not self._formando
         self._aplicar_modo_formar()
         self._info(
-            "Elige a los alumnos del equipo (Ctrl o Mayús para varios) y pulsa «Crear equipo»."
+            "Haz clic en los alumnos del equipo (otro clic los quita) y pulsa «Crear equipo»."
             if self._formando else AJUSTES_MODO["proyecto"][5]
         )
 
@@ -1126,16 +1160,28 @@ class VistaCurso(ctk.CTkFrame):
                 fg_color=tema.COLOR_PROYECTO, hover_color=tema.COLOR_PROYECTO_HOVER,
                 text_color=ctk.ThemeManager.theme["CTkButton"]["text_color"],
             )
-            self._boton_crear_equipo.pack(side="right")
+            self._acciones_equipo.pack(anchor="w", pady=(8, 0))
         else:
             self._boton_formar.configure(
                 fg_color="transparent", hover_color=tema.COLOR_NAV_ACTIVO, text_color=tema.COLOR_TEXTO,
             )
-            self._boton_crear_equipo.pack_forget()
+            self._acciones_equipo.pack_forget()
         self._actualizar_barra()
 
     def _seleccionados(self) -> list[int]:
         return [int(i) for i in self._tabla.selection() if not es_encabezado(i)]
+
+    def _elegidos_con_equipo(self) -> tuple[list[int], list[int]]:
+        """(alumnos seleccionados que tienen equipo, números de esos equipos). Los demás se ignoran."""
+        equipos = {f.alumno.id: f.equipo for f in self._filas if f.equipo is not None}
+        elegidos = [i for i in self._seleccionados() if i in equipos]
+        return elegidos, sorted({equipos[i] for i in elegidos})
+
+    def sacar_de_equipo(self) -> None:
+        """Botón «Sacar de equipo»: lo mismo que «Separar» del clic derecho, sobre la selección."""
+        elegidos, _numeros = self._elegidos_con_equipo()
+        if elegidos:
+            self.separar(elegidos)
 
     def _actualizar_barra(self) -> None:
         n = len(self._seleccionados()) if self._formando else 0
@@ -1148,6 +1194,11 @@ class VistaCurso(ctk.CTkFrame):
         self._boton_crear_equipo.configure(
             state="normal" if n else "disabled",
             text="Crear equipo" if n == 0 else f"Crear equipo con {n} alumno{'s' if n != 1 else ''}",
+        )
+        con_equipo = len(self._elegidos_con_equipo()[0]) if self._formando else 0
+        self._boton_sacar_equipo.configure(
+            state="normal" if con_equipo else "disabled",
+            text="Sacar de equipo" if con_equipo == 0 else f"Sacar de equipo ({con_equipo})",
         )
 
     def crear_equipo(self) -> None:
@@ -1192,12 +1243,14 @@ class VistaCurso(ctk.CTkFrame):
             if self._tabla.exists(iid):
                 self._tabla.item(iid, tags=tuple(t for t in self._tabla.item(iid, "tags") if t != "reciente"))
 
-    def _menu_separar(self, evento) -> tk.Menu | None:
-        """Menú del clic derecho: separar de su equipo a los alumnos elegidos. None si no aplica.
+    def _menu_equipos(self, evento) -> tk.Menu | None:
+        """Menú del clic derecho sobre un alumno. None si no hay nada que ofrecer.
 
         Solo con «Formar equipos» activo. Un clic derecho sobre una fila que no está seleccionada
-        la selecciona sola; sobre una seleccionada conserva la selección. Los alumnos sin equipo se
-        ignoran, y sin ninguno con equipo no hay menú.
+        la selecciona sola; sobre una seleccionada conserva la selección. Ofrece:
+        - «Separar del equipo N»: para los seleccionados que ya tienen equipo;
+        - «Agregar a ▸» con los equipos ya formados: para los seleccionados que no tienen equipo
+          (a quien ya tiene equipo no se le ofrece: primero hay que separarlo).
         """
         if not self._formando:
             return None
@@ -1206,22 +1259,31 @@ class VistaCurso(ctk.CTkFrame):
             return None
         if iid not in self._tabla.selection():
             self._tabla.selection_set(iid)
-        equipos = {f.alumno.id: f.equipo for f in self._filas if f.equipo is not None}
-        elegidos = [i for i in self._seleccionados() if i in equipos]
-        if not elegidos:
-            return None
-        numeros = sorted({equipos[i] for i in elegidos})
-        n = len(elegidos)
-        if len(numeros) > 1:
-            texto = f"Separar de sus equipos ({n} alumnos)"
-        else:
-            texto = f"Separar del equipo {numeros[0]}" + (f" ({n} alumnos)" if n > 1 else "")
+        elegidos, numeros = self._elegidos_con_equipo()
+        sin_equipo = [i for i in self._seleccionados() if i not in elegidos]
         menu = tk.Menu(self, tearoff=0)
-        menu.add_command(label=texto, command=lambda: self.separar(elegidos))
-        return menu
+        if elegidos:
+            n = len(elegidos)
+            if len(numeros) > 1:
+                texto = f"Separar de sus equipos ({n} alumnos)"
+            else:
+                texto = f"Separar del equipo {numeros[0]}" + (f" ({n} alumnos)" if n > 1 else "")
+            menu.add_command(label=texto, command=lambda: self.separar(elegidos))
+        equipos = self._servicio.equipos_del_curso(self.curso.id)
+        if sin_equipo and equipos:
+            submenu = tk.Menu(menu, tearoff=0)
+            for equipo in equipos:
+                k = len(equipo.miembros)
+                submenu.add_command(
+                    label=f"Equipo {equipo.numero} ({k} alumno{'s' if k != 1 else ''})",
+                    command=lambda numero=equipo.numero: self.agregar_a(numero, sin_equipo),
+                )
+            m = len(sin_equipo)
+            menu.add_cascade(label="Agregar a" + (f" ({m} alumnos)" if m > 1 else ""), menu=submenu)
+        return menu if menu.index("end") is not None else None
 
     def _al_clic_derecho(self, evento) -> str:
-        menu = self._menu_separar(evento)
+        menu = self._menu_equipos(evento)
         if menu is not None:
             try:
                 menu.tk_popup(evento.x_root, evento.y_root)
@@ -1249,6 +1311,30 @@ class VistaCurso(ctk.CTkFrame):
         self._exito(f"Se separó a {n} alumno{'s' if n != 1 else ''} {de}.", deshacible=True)
         self._actualizar_barra()
 
+    def agregar_a(self, numero: int, alumno_ids: list[int]) -> None:
+        """Suma alumnos sin equipo a un equipo ya formado (se puede deshacer)."""
+        try:
+            resultado = self._servicio.agregar_a_equipo(self.curso.id, numero, alumno_ids)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
+            quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in resultado.con_equipo)
+            self._error(f"Ya tienen equipo: {quienes}. Sepáralos primero.")
+            return
+        ids = [a.id for a in resultado.miembros]
+        self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
+        self._ultima_importacion = None
+        self._ultima_equipo = ("agregado", (numero, ids))
+        self.recargar()
+        self._resaltar_miembros(ids)
+        k = len(ids)
+        self._exito(
+            f"{k} alumno{'s' if k != 1 else ''} agregado{'s' if k != 1 else ''} al equipo {numero}.",
+            deshacible=True,
+        )
+        self._actualizar_barra()
+
     def _deshacer_equipo(self) -> None:
         tipo, dato = self._ultima_equipo
         self._ultima_equipo = None
@@ -1256,6 +1342,10 @@ class VistaCurso(ctk.CTkFrame):
             if tipo == "formado":
                 self._servicio.deshacer_equipo(self.curso.id, dato)
                 texto = f"Se deshizo el equipo {dato}: sus alumnos quedaron sin equipo."
+            elif tipo == "agregado":
+                numero, ids = dato
+                self._servicio.separar_de_equipo(self.curso.id, ids)
+                texto = f"Se deshizo: {len(ids)} alumnos salieron del equipo {numero}."
             else:
                 self._servicio.deshacer_separacion(self.curso.id, dato)
                 texto = f"Se deshizo la separación: {len(dato)} alumnos volvieron a su equipo."

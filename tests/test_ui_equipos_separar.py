@@ -42,13 +42,13 @@ def _equipo(ui, v, cuenta):
 def test_fuera_de_formar_equipos_no_hay_menu(curso_ui):
     _formar(curso_ui, "100000001")
     v = _en_proyecto(curso_ui)
-    assert v._menu_separar(_evento(curso_ui, _iid(v, "100000001"))) is None
+    assert v._menu_equipos(_evento(curso_ui, _iid(v, "100000001"))) is None
 
 
 def test_clic_derecho_en_un_miembro_ofrece_separarlo_de_su_equipo(curso_ui):
     _formar(curso_ui, "100000001", "100000002")
     v = _activar_formar(curso_ui)
-    menu = v._menu_separar(_evento(curso_ui, _iid(v, "100000001")))
+    menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000001")))
     assert _etiqueta_menu(menu) == "Separar del equipo 1"
     assert v._tabla.selection() == (_iid(v, "100000001"),)  # el clic derecho selecciona esa fila
 
@@ -56,7 +56,7 @@ def test_clic_derecho_en_un_miembro_ofrece_separarlo_de_su_equipo(curso_ui):
 def test_separar_saca_al_alumno_actualiza_la_tabla_y_se_puede_deshacer(curso_ui):
     _formar(curso_ui, "100000001", "100000002")
     v = _activar_formar(curso_ui)
-    v._menu_separar(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
+    v._menu_equipos(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
     assert "Se separó a 1 alumno del equipo 1" in _texto_franja(v)
     assert _equipo(curso_ui, v, "100000001") is None
     assert [n for _, n in _filas(v)][:2] == ["Equipo 1 · 1 alumno", "ACOSTA ORTEGA ELENA"]
@@ -66,17 +66,21 @@ def test_separar_saca_al_alumno_actualiza_la_tabla_y_se_puede_deshacer(curso_ui)
     assert _equipo(curso_ui, v, "100000001") == 1
 
 
-def test_sin_equipo_o_en_un_encabezado_no_hay_menu(curso_ui):
+def test_sin_equipo_y_sin_equipos_formados_no_hay_menu(curso_ui):
+    v = _activar_formar(curso_ui)
+    assert v._menu_equipos(_evento(curso_ui, _iid(v, "100000002"))) is None  # nada que separar ni a dónde agregar
+
+
+def test_en_un_encabezado_no_hay_menu(curso_ui):
     _formar(curso_ui, "100000001")
     v = _activar_formar(curso_ui)
-    assert v._menu_separar(_evento(curso_ui, _iid(v, "100000002"))) is None  # sin equipo
-    assert v._menu_separar(_evento(curso_ui, "equipo_1")) is None
+    assert v._menu_equipos(_evento(curso_ui, "equipo_1")) is None
 
 
 def test_clic_derecho_fuera_de_las_filas_no_hace_nada(curso_ui):
     _formar(curso_ui, "100000001")
     v = _activar_formar(curso_ui)
-    assert v._menu_separar(SimpleNamespace(x=30, y=100000, x_root=0, y_root=0)) is None
+    assert v._menu_equipos(SimpleNamespace(x=30, y=100000, x_root=0, y_root=0)) is None
 
 
 def test_con_varios_seleccionados_separa_a_todos_los_que_tienen_equipo(curso_ui):
@@ -84,7 +88,7 @@ def test_con_varios_seleccionados_separa_a_todos_los_que_tienen_equipo(curso_ui)
     _formar(curso_ui, "100000003")
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000002", "100000003", "100000004")  # el último sin equipo
-    menu = v._menu_separar(_evento(curso_ui, _iid(v, "100000001")))
+    menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000001")))
     assert _etiqueta_menu(menu) == "Separar de sus equipos (3 alumnos)"
     assert len(v._tabla.selection()) == 4  # clic sobre un seleccionado conserva la selección
     menu.invoke(0)
@@ -96,7 +100,7 @@ def test_varios_del_mismo_equipo_dicen_cuantos(curso_ui):
     _formar(curso_ui, "100000001", "100000002", "100000003")
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000002")
-    menu = v._menu_separar(_evento(curso_ui, _iid(v, "100000002")))
+    menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000002")))
     assert _etiqueta_menu(menu) == "Separar del equipo 1 (2 alumnos)"
 
 
@@ -104,7 +108,7 @@ def test_clic_derecho_en_una_fila_no_seleccionada_separa_solo_esa(curso_ui):
     _formar(curso_ui, "100000001", "100000002")
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001")
-    v._menu_separar(_evento(curso_ui, _iid(v, "100000002"))).invoke(0)
+    v._menu_equipos(_evento(curso_ui, _iid(v, "100000002"))).invoke(0)
     assert _equipo(curso_ui, v, "100000001") == 1
     assert _equipo(curso_ui, v, "100000002") is None
 
@@ -112,7 +116,7 @@ def test_clic_derecho_en_una_fila_no_seleccionada_separa_solo_esa(curso_ui):
 def test_separar_a_todos_hace_desaparecer_el_equipo_y_su_numero_no_se_reutiliza(curso_ui):
     _formar(curso_ui, "100000001")
     v = _activar_formar(curso_ui)
-    v._menu_separar(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
+    v._menu_equipos(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
     assert not any(i.startswith("equipo_") for i in v._tabla.get_children())
     _seleccionar(curso_ui, "100000002")
     v.crear_equipo()
@@ -122,7 +126,7 @@ def test_separar_a_todos_hace_desaparecer_el_equipo_y_su_numero_no_se_reutiliza(
 def test_separar_resalta_a_los_alumnos_separados(curso_ui):
     _formar(curso_ui, "100000001", "100000002")
     v = _activar_formar(curso_ui)
-    v._menu_separar(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
+    v._menu_equipos(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
     assert "reciente" in _etiquetas(v, _iid(v, "100000001"))
 
 
@@ -143,6 +147,6 @@ def test_separar_no_altera_las_calificaciones(curso_ui):
     curso_ui.srv.registrar_tareas(curso_ui.curso.id, "100000001", 85)
     _formar(curso_ui, "100000001", "100000002")
     v = _activar_formar(curso_ui)
-    v._menu_separar(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
+    v._menu_equipos(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
     tareas = {r.alumno.num_cuenta: r.tareas for r in curso_ui.srv.resumen_curso(curso_ui.curso.id)}
     assert tareas["100000001"] == 85

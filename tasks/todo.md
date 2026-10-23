@@ -66,6 +66,16 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`
   - Dependencias: T4
 
+- [x] **T5.1: Ajustes tras la revisión de la persona** (M)
+  - Descripción: el clic simple selecciona al formar (sin Ctrl); «Crear equipo» debajo de «Formar equipos» a la izquierda, con «Sacar de equipo»; clic derecho con «Agregar a ▸» y la lista de equipos formados.
+  - Aceptación:
+    - [x] Formando, un clic suma al alumno a la selección y otro lo quita; Mayús/Ctrl y el orden por encabezado siguen igual; el doble clic no abre historial.
+    - [x] «Crear equipo con N» va justo debajo de «Formar equipos» y «Sacar de equipo (N)» a su derecha, con la misma lógica que «Separar».
+    - [x] «Agregar a ▸» lista los equipos con miembros; solo se ofrece a quien no tiene equipo; se puede deshacer; no revive equipos vacíos.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_equipos_agregar.py tests/test_ui_equipos_ajustes.py -q`
+  - Archivos: `core/services.py`, `core/models.py`, `ui_desktop/vista_curso.py`, `SPEC-equipos.md`, `CLAUDE.md`, pruebas
+  - Dependencias: T5
+
 ### Checkpoint 2: Sección «Proyecto»
 - [x] Suite completa en verde (444 pasadas, 3 omitidas).
 - [ ] Flujo manual: formar equipos, ver los colores en claro y oscuro, separar, deshacer, F2 en cuatro modos.

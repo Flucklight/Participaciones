@@ -656,9 +656,41 @@ class ServicioParticipaciones:
         Si alguno ya tiene equipo no crea nada ni mueve a nadie: informa quién y en cuál.
         """
         self._curso_o_error(curso_id)
+        alumnos, con_equipo = self._alumnos_para_equipo(
+            curso_id, alumno_ids, "Elige al menos un alumno para formar el equipo."
+        )
+        if con_equipo:
+            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo)
+        with self._repo.transaccion():
+            numero = self._repo.siguiente_numero_equipo(curso_id)
+            self._repo.crear_equipo(curso_id, numero)
+            for alumno in alumnos:
+                self._repo.agregar_miembro_equipo(curso_id, alumno.id, numero)
+        return ResultadoEquipo(EstadoEquipo.FORMADO, numero, alumnos)
+
+    def agregar_a_equipo(self, curso_id: int, numero: int, alumno_ids: list[int]) -> ResultadoEquipo:
+        """Suma alumnos a un equipo que ya tiene miembros. Igual que al formar, si alguno ya tiene
+        equipo no cambia nada (hay que separarlo antes) y se informa quién y en cuál."""
+        self._curso_o_error(curso_id)
+        if numero not in self._repo.miembros_por_equipo(curso_id):
+            raise ErrorDominio(f"El equipo {numero} no existe o ya no tiene miembros.")
+        alumnos, con_equipo = self._alumnos_para_equipo(
+            curso_id, alumno_ids, "Elige al menos un alumno para agregar al equipo."
+        )
+        if con_equipo:
+            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo)
+        with self._repo.transaccion():
+            for alumno in alumnos:
+                self._repo.agregar_miembro_equipo(curso_id, alumno.id, numero)
+        return ResultadoEquipo(EstadoEquipo.AGREGADO, numero, alumnos)
+
+    def _alumnos_para_equipo(
+        self, curso_id: int, alumno_ids: list[int], mensaje_vacio: str
+    ) -> tuple[list[Alumno], list[tuple[Alumno, int]]]:
+        """Valida a los alumnos (sin repetir, inscritos) y separa a los que ya tienen equipo."""
         ids = list(dict.fromkeys(alumno_ids))
         if not ids:
-            raise ErrorDominio("Elige al menos un alumno para formar el equipo.")
+            raise ErrorDominio(mensaje_vacio)
         alumnos = []
         for alumno_id in ids:
             alumno = self._alumno_o_error(alumno_id)
@@ -668,14 +700,7 @@ class ServicioParticipaciones:
         con_equipo = [
             (a, numero) for a in alumnos if (numero := self._repo.equipo_de(curso_id, a.id)) is not None
         ]
-        if con_equipo:
-            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo)
-        with self._repo.transaccion():
-            numero = self._repo.siguiente_numero_equipo(curso_id)
-            self._repo.crear_equipo(curso_id, numero)
-            for alumno in alumnos:
-                self._repo.agregar_miembro_equipo(curso_id, alumno.id, numero)
-        return ResultadoEquipo(EstadoEquipo.FORMADO, numero, alumnos)
+        return alumnos, con_equipo
 
     def separar_de_equipo(self, curso_id: int, alumno_ids: list[int]) -> dict[int, int]:
         """Saca a los alumnos de su equipo. Devuelve {alumno_id: equipo que tenía} de quienes
