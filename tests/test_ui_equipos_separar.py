@@ -49,7 +49,7 @@ def test_clic_derecho_en_un_miembro_ofrece_separarlo_de_su_equipo(curso_ui):
     _formar(curso_ui, "100000001", "100000002")
     v = _activar_formar(curso_ui)
     menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000001")))
-    assert _etiqueta_menu(menu) == "Separar del equipo 1"
+    assert _etiqueta_menu(menu) == "Sacar del equipo 1"
     assert v._tabla.selection() == (_iid(v, "100000001"),)  # el clic derecho selecciona esa fila
 
 
@@ -57,12 +57,12 @@ def test_separar_saca_al_alumno_actualiza_la_tabla_y_se_puede_deshacer(curso_ui)
     _formar(curso_ui, "100000001", "100000002")
     v = _activar_formar(curso_ui)
     v._menu_equipos(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
-    assert "Se separó a 1 alumno del equipo 1" in _texto_franja(v)
+    assert "Se sacó a 1 alumno del equipo 1" in _texto_franja(v)
     assert _equipo(curso_ui, v, "100000001") is None
     assert [n for _, n in _filas(v)][:2] == ["Equipo 1 · 1 alumno", "ACOSTA ORTEGA ELENA"]
     assert _boton_deshacer_visible(v)
     v.deshacer()
-    assert "Se deshizo la separación" in _texto_franja(v)
+    assert "volvieron a su equipo" in _texto_franja(v)
     assert _equipo(curso_ui, v, "100000001") == 1
 
 
@@ -89,10 +89,10 @@ def test_con_varios_seleccionados_separa_a_todos_los_que_tienen_equipo(curso_ui)
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000002", "100000003", "100000004")  # el último sin equipo
     menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000001")))
-    assert _etiqueta_menu(menu) == "Separar de sus equipos (3 alumnos)"
+    assert _etiqueta_menu(menu) == "Sacar de sus equipos (3 alumnos)"
     assert len(v._tabla.selection()) == 4  # clic sobre un seleccionado conserva la selección
     menu.invoke(0)
-    assert "Se separó a 3 alumnos" in _texto_franja(v)
+    assert "Se sacó a 3 alumnos" in _texto_franja(v)
     assert curso_ui.srv.equipos_del_curso(curso_ui.curso.id) == []
 
 
@@ -101,7 +101,7 @@ def test_varios_del_mismo_equipo_dicen_cuantos(curso_ui):
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000002")
     menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000002")))
-    assert _etiqueta_menu(menu) == "Separar del equipo 1 (2 alumnos)"
+    assert _etiqueta_menu(menu) == "Sacar del equipo 1 (2 alumnos)"
 
 
 def test_clic_derecho_en_una_fila_no_seleccionada_separa_solo_esa(curso_ui):

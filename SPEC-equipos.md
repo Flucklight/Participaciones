@@ -11,7 +11,7 @@ Usuario: el profesor, al inicio del proyecto (formar) y cuando hay cambios (sepa
 Decisiones ya tomadas con la persona:
 - Formar equipos **solo en la sección «Proyecto»**: un botón «Formar equipos» activa un modo en el que se seleccionan **varios alumnos** y se crea un equipo con un **número incremental** por curso.
 - Al crear equipos, **solo en esta sección** la tabla se ordena por número de equipo (agrupados) y, dentro del equipo, por nombre.
-- En ese modo, **clic derecho → «Separar»** saca a un miembro de su equipo.
+- En ese modo, **clic derecho → «Sacar»** saca a un miembro de su equipo.
 - El número de un equipo **nunca se reutiliza**, aunque se quede sin miembros.
 - Si entre los seleccionados hay alguien que **ya tiene equipo**, se **rechaza y se avisa** quién es; hay que separarlo antes. Nunca se mueve a nadie sin que lo pidas.
 
@@ -24,7 +24,7 @@ Decisiones ya tomadas con la persona:
 5. En modo «Proyecto» la tabla agrega una columna **«Equipo»** («Equipo 3» o vacío) y se ordena por equipo y nombre; **los alumnos sin equipo van al final**, ordenados por nombre. En los demás modos la tabla conserva su orden y no cambia nada. Se puede ordenar por otra columna con un clic en el encabezado, como siempre.
 6. **Seleccionar:** con «Formar equipos» activo, **un clic en un alumno lo agrega a la selección y otro clic lo quita** (no hace falta Ctrl; Mayús y Ctrl siguen funcionando como en cualquier tabla). El clic ya **no** carga al alumno en el campo de registro y el doble clic no abre el historial. Al activar el modo la franja explica cómo usarlo; al desactivarlo (o cambiar de modo) la selección se limpia.
 7. **Crear:** la barra muestra «N seleccionados» junto a «Formar equipos»; **justo debajo, alineado a la izquierda**, el botón «Crear equipo con N alumnos» (o «con 1 alumno»; deshabilitado sin selección) y a su derecha **«Sacar de equipo (N)»**. Tras crear, la franja dice «Equipo 3 formado con N alumnos» y los miembros quedan resaltados. «Deshacer» elimina el equipo recién creado (y libera a sus miembros); su número no se reutiliza.
-8. **Separar:** dos caminos con la misma lógica, sobre los alumnos seleccionados que tienen equipo (los demás se ignoran): el botón **«Sacar de equipo»** y, con clic derecho, **«Separar del equipo N»** (con varios: «Separar de sus equipos (N alumnos)»). Es inmediato (no destruye datos) y se puede deshacer. Solo está disponible con «Formar equipos» activo. El clic derecho sobre una fila no seleccionada la selecciona sola; sobre una seleccionada conserva la selección.
+8. **Separar:** dos caminos con la misma lógica, sobre los alumnos seleccionados que tienen equipo (los demás se ignoran): el botón **«Sacar de equipo»** y, con clic derecho, **«Sacar del equipo N»** (con varios: «Sacar de sus equipos (N alumnos)»). Todo el texto de la interfaz usa «sacar» (decisión de la persona). Es inmediato (no destruye datos) y se puede deshacer. Solo está disponible con «Formar equipos» activo. El clic derecho sobre una fila no seleccionada la selecciona sola; sobre una seleccionada conserva la selección.
 8b. **Agregar a un equipo ya formado:** con clic derecho, si hay alumnos seleccionados **sin equipo** y existen equipos con miembros, el menú ofrece **«Agregar a ▸»** con un submenú «Equipo 1 (3 alumnos)», «Equipo 2 (1 alumno)»…; al elegir uno se suman al equipo (franja «2 alumnos agregados al equipo 1», resaltados y «Deshacer» los vuelve a sacar). **A quien ya tiene equipo no se le ofrece** (primero hay que separarlo, regla de no mover sin acción explícita); no se puede agregar a un equipo que ya quedó vacío (su número sigue sin reutilizarse). Una selección mixta ofrece separar a unos y agregar a otros.
 9. Las calificaciones **no se tocan** al formar o separar equipos (eso es de `proyecto`).
 10. **Eliminar un curso** borra sus equipos; el diálogo no necesita contarlos (no son calificaciones).
@@ -67,7 +67,7 @@ Con «Formar equipos» activo:
   9   100000009   PEREZ LUNA ANA           …              …  Equipo 1
   2   100000002   GARCIA LOPEZ ANA         …              …  Equipo 2
   …                                                          (sin equipo, al final)
- clic derecho sobre una fila con equipo ▸ «Separar del equipo 1»
+ clic derecho sobre una fila con equipo ▸ «Sacar del equipo 1» · sin equipo ▸ «Agregar a ▸»
 ```
 
 - En `equipos` el modo «Proyecto» **no tiene campo de registro** (llega con `proyecto`): muestra el botón «Formar equipos», la barra de selección y la tabla agrupada, con una franja de ayuda («Activa «Formar equipos» para armar los equipos del proyecto»).
@@ -106,7 +106,7 @@ core/services.py        → formar_equipo, separar_de_equipo, deshacer_equipo, e
                           `resumen_curso` trae el equipo de cada alumno
 ui_desktop/tema.py      → color del modo Proyecto y los dos tonos alternados de equipo
 ui_desktop/vista_curso.py → cuarto modo, F2 en ciclo de cuatro, botón «Formar equipos», selección múltiple,
-                            barra «N seleccionados», menú contextual «Separar», orden y columna «Equipo»
+                            barra «N seleccionados», menú contextual «Sacar del equipo» y «Agregar a ▸», orden y columna «Equipo»
 tests/test_equipos.py, test_ui_curso.py (ampliar), test_ui_equipos.py (nuevo)
 CLAUDE.md, README.md    → R16 y pantalla; subir core/version.py
 ```
@@ -144,7 +144,7 @@ pytest, **solo datos ficticios** (`100000001`, nombres inventados).
 1. En modo «Proyecto» con «Formar equipos» activo, seleccionar 3 alumnos (Ctrl/Mayús) y pulsar «Crear equipo con 3 alumnos» los asigna al equipo 1; el siguiente equipo es el 2.
 2. La tabla muestra «Equipo» y se agrupa por número y nombre, con los alumnos sin equipo al final; en los otros tres modos la tabla se ve igual que antes.
 3. Incluir a alguien que ya tiene equipo rechaza la operación, dice quién y en cuál equipo, y no cambia nada.
-4. Clic derecho en un miembro → «Separar del equipo N» lo deja sin equipo; si se separa a todos, el equipo desaparece y el siguiente número creado sigue sin reutilizar el suyo.
+4. Clic derecho en un miembro → «Sacar del equipo N» lo deja sin equipo; si se separa a todos, el equipo desaparece y el siguiente número creado sigue sin reutilizar el suyo.
 5. «Deshacer» revierte la última creación o separación.
 6. Sin alumnos seleccionados el botón de crear está deshabilitado; con 1 solo se puede formar un equipo de 1 alumno.
 7. Décimas, exámenes, tareas y sus promedios se comportan exactamente como antes.

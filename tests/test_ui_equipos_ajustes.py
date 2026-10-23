@@ -138,7 +138,7 @@ def test_sacar_de_equipo_hace_lo_mismo_que_separar_del_clic_derecho(curso_ui):
     for cuenta in ("100000001", "100000003", "100000004"):  # el último sin equipo: se ignora
         _pulsar(curso_ui, cuenta)
     v.sacar_de_equipo()
-    assert "Se separó a 2 alumnos de sus equipos" in _texto_franja(v)
+    assert "Se sacó a 2 alumnos de sus equipos" in _texto_franja(v)
     assert _equipo(curso_ui, v, "100000001") is None and _equipo(curso_ui, v, "100000003") is None
     assert _equipo(curso_ui, v, "100000002") == 1
     assert _boton_deshacer_visible(v)
@@ -150,7 +150,7 @@ def test_sacar_de_equipo_sin_nadie_con_equipo_no_hace_nada(curso_ui):
     v = _activar_formar(curso_ui)
     _pulsar(curso_ui, "100000001")
     v.sacar_de_equipo()
-    assert "Se separó" not in _texto_franja(v)
+    assert "Se sacó" not in _texto_franja(v)
 
 
 # ---------------- «Agregar a ▸» ----------------
@@ -202,7 +202,7 @@ def test_a_quien_ya_tiene_equipo_no_se_le_ofrece_agregar(curso_ui):
     _formar(curso_ui, "100000002")
     v = _activar_formar(curso_ui)
     menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000001")))
-    assert menu.index("end") == 0 and menu.entrycget(0, "label") == "Separar del equipo 1"
+    assert menu.index("end") == 0 and menu.entrycget(0, "label") == "Sacar del equipo 1"
 
 
 def test_con_una_seleccion_mixta_se_ofrece_separar_y_agregar(curso_ui):
@@ -211,7 +211,7 @@ def test_con_una_seleccion_mixta_se_ofrece_separar_y_agregar(curso_ui):
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000003")
     menu = v._menu_equipos(_evento(curso_ui, _iid(v, "100000001")))
-    assert menu.entrycget(0, "label") == "Separar del equipo 1"
+    assert menu.entrycget(0, "label") == "Sacar del equipo 1"
     assert menu.entrycget(1, "label") == "Agregar a"
     _submenu(menu, 1).invoke(1)  # al equipo 2: solo se agrega el que no tenía equipo
     assert _equipo(curso_ui, v, "100000003") == 2 and _equipo(curso_ui, v, "100000001") == 1

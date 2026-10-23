@@ -1178,7 +1178,7 @@ class VistaCurso(ctk.CTkFrame):
         return elegidos, sorted({equipos[i] for i in elegidos})
 
     def sacar_de_equipo(self) -> None:
-        """Botón «Sacar de equipo»: lo mismo que «Separar» del clic derecho, sobre la selección."""
+        """Botón «Sacar de equipo»: lo mismo que «Sacar del equipo» del clic derecho, sobre la selección."""
         elegidos, _numeros = self._elegidos_con_equipo()
         if elegidos:
             self.separar(elegidos)
@@ -1212,7 +1212,7 @@ class VistaCurso(ctk.CTkFrame):
             return
         if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
             quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in resultado.con_equipo)
-            self._error(f"Ya tienen equipo: {quienes}. Sepáralos primero (clic derecho › Separar).")
+            self._error(f"Ya tienen equipo: {quienes}. Sácalos primero (botón «Sacar de equipo» o clic derecho).")
             return
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
@@ -1248,9 +1248,9 @@ class VistaCurso(ctk.CTkFrame):
 
         Solo con «Formar equipos» activo. Un clic derecho sobre una fila que no está seleccionada
         la selecciona sola; sobre una seleccionada conserva la selección. Ofrece:
-        - «Separar del equipo N»: para los seleccionados que ya tienen equipo;
+        - «Sacar del equipo N»: para los seleccionados que ya tienen equipo;
         - «Agregar a ▸» con los equipos ya formados: para los seleccionados que no tienen equipo
-          (a quien ya tiene equipo no se le ofrece: primero hay que separarlo).
+          (a quien ya tiene equipo no se le ofrece: primero hay que sacarlo).
         """
         if not self._formando:
             return None
@@ -1265,9 +1265,9 @@ class VistaCurso(ctk.CTkFrame):
         if elegidos:
             n = len(elegidos)
             if len(numeros) > 1:
-                texto = f"Separar de sus equipos ({n} alumnos)"
+                texto = f"Sacar de sus equipos ({n} alumnos)"
             else:
-                texto = f"Separar del equipo {numeros[0]}" + (f" ({n} alumnos)" if n > 1 else "")
+                texto = f"Sacar del equipo {numeros[0]}" + (f" ({n} alumnos)" if n > 1 else "")
             menu.add_command(label=texto, command=lambda: self.separar(elegidos))
         equipos = self._servicio.equipos_del_curso(self.curso.id)
         if sin_equipo and equipos:
@@ -1308,7 +1308,7 @@ class VistaCurso(ctk.CTkFrame):
         n = len(separados)
         numeros = sorted(set(separados.values()))
         de = f"del equipo {numeros[0]}" if len(numeros) == 1 else "de sus equipos"
-        self._exito(f"Se separó a {n} alumno{'s' if n != 1 else ''} {de}.", deshacible=True)
+        self._exito(f"Se sacó a {n} alumno{'s' if n != 1 else ''} {de}.", deshacible=True)
         self._actualizar_barra()
 
     def agregar_a(self, numero: int, alumno_ids: list[int]) -> None:
@@ -1320,7 +1320,7 @@ class VistaCurso(ctk.CTkFrame):
             return
         if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
             quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in resultado.con_equipo)
-            self._error(f"Ya tienen equipo: {quienes}. Sepáralos primero.")
+            self._error(f"Ya tienen equipo: {quienes}. Sácalos primero.")
             return
         ids = [a.id for a in resultado.miembros]
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
@@ -1348,7 +1348,7 @@ class VistaCurso(ctk.CTkFrame):
                 texto = f"Se deshizo: {len(ids)} alumnos salieron del equipo {numero}."
             else:
                 self._servicio.deshacer_separacion(self.curso.id, dato)
-                texto = f"Se deshizo la separación: {len(dato)} alumnos volvieron a su equipo."
+                texto = f"Se deshizo: {len(dato)} alumnos volvieron a su equipo."
         except ErrorDominio as error:
             self._error(str(error))
             return

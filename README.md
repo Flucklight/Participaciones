@@ -26,6 +26,8 @@ participacion(id, curso_id, alumno_id, decimas, fecha, nota)
 examen(id, curso_id, nombre, nombre_norm)               -- único por curso+nombre; sin puntaje máximo
 calificacion(examen_id, alumno_id, puntos, fecha)       -- una por alumno y examen
 calificacion_tareas(curso_id, alumno_id, puntos, fecha) -- una por alumno y curso; promedio ya calculado fuera
+equipo(curso_id, numero)                                -- equipos de proyecto; no se borran al quedar vacíos
+miembro_equipo(curso_id, alumno_id, numero)             -- un alumno en un solo equipo por curso
 ```
 
 - El nombre se guarda **completo en un solo campo**, tal como viene en la lista de inscripción (`APELLIDO_PATERNO APELLIDO_MATERNO NOMBRES`). No se separan apellidos porque los compuestos (`DE LA PAZ`) no se pueden dividir de forma confiable.
@@ -33,6 +35,7 @@ calificacion_tareas(curso_id, alumno_id, puntos, fecha) -- una por alumno y curs
 - Los **oyentes** no tienen número de cuenta hasta que aparecen en una lista de inscripción.
 - Los **exámenes** son independientes de las décimas: una calificación por alumno y examen, sin tope (se aceptan puntos extra). Un examen sin capturar vale 0. El **promedio de exámenes** es la media simple de todos los exámenes del curso y se calcula en `core/promedio.py`.
 - La **calificación de tareas** es el promedio de tareas que ya calculó otra plataforma: se captura (o corrige) por alumno y curso, sin tope, y la app no calcula nada. Sin captura vale 0. Es independiente de décimas y exámenes.
+- Los **equipos de proyecto** se forman por curso con 1 o más alumnos. El número es incremental y **nunca se reutiliza**, aunque el equipo se quede sin miembros. Un alumno está en un solo equipo. No afectan ninguna calificación.
 
 ## Pantallas
 
@@ -62,7 +65,9 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 - Todo el flujo es operable con teclado.
 - Doble clic en un alumno abre su historial.
 
-**Exámenes y tareas.** El selector `[Participación | Examen | Tareas]` (tecla **F2**, recorre los tres modos) cambia el registro rápido a calificaciones: eliges el examen (o creas uno con «＋ Nuevo»; «⋯» renombra o elimina), escribes cuenta o nombre y la calificación. Si el alumno ya tenía nota, la app avisa «Ya tiene X; se cambiará a Y» y pide confirmar; «Deshacer» la restaura. La tabla gana una columna «Examen - <nombre>» por examen. En modo **Tareas** capturas la calificación de tareas de cada alumno (con la misma advertencia de reemplazo y «Deshacer»); la tabla muestra la columna «Tareas».
+**Exámenes y tareas.** El selector `[Participación | Examen | Tareas | Proyecto]` (tecla **F2**, recorre los cuatro modos) cambia el registro rápido a calificaciones: eliges el examen (o creas uno con «＋ Nuevo»; «⋯» renombra o elimina), escribes cuenta o nombre y la calificación. Si el alumno ya tenía nota, la app avisa «Ya tiene X; se cambiará a Y» y pide confirmar; «Deshacer» la restaura. La tabla gana una columna «Examen - <nombre>» por examen. En modo **Tareas** capturas la calificación de tareas de cada alumno (con la misma advertencia de reemplazo y «Deshacer»); la tabla muestra la columna «Tareas».
+
+**Equipos para el proyecto final.** El modo **Proyecto** agrupa la tabla por equipo, con una fila de encabezado coloreada («Equipo 2 · 3 alumnos») y dos tonos que se alternan; los alumnos sin equipo quedan al final. Con **«Formar equipos»** haces clic en los alumnos (otro clic los quita) y pulsas «Crear equipo con N alumnos»; «Sacar de equipo» los saca de su equipo. Con clic derecho también puedes **sacar** a un alumno o **agregarlo a un equipo ya formado** (submenú con la lista). Todo se puede deshacer, y un alumno que ya tiene equipo nunca se mueve sin que lo saques antes.
 
 **Importar tareas desde un archivo.** Con «⬆ Importar tareas» eliges el `.xlsx` o `.csv` que descargas de la otra plataforma. La app reconoce a cada alumno por su nombre (o por número de cuenta si el archivo trae una columna «Cuenta») y te muestra una vista previa: qué columna importar (por omisión la del promedio), quién cambia («antes → después»), qué coincidencias son dudosas (solo se aplican si las marcas) y qué filas se omiten. Nunca crea alumnos ni toca a quienes el archivo no menciona. Al aplicar, puedes **deshacer la importación** completa.
 
@@ -116,7 +121,8 @@ Participaciones/
 │   ├── repository.py      # único lugar con SQL
 │   └── services.py
 ├── importers/
-│   └── lista_aragon.py
+│   ├── lista_aragon.py
+│   └── calificaciones_plataforma.py
 ├── ui_desktop/
 ├── assets/icon/           # logo (PNG) e ícono de la app (.ico)
 ├── scripts/               # construir_exe.ps1

@@ -311,7 +311,7 @@ def test_incluir_a_alguien_con_equipo_se_rechaza_y_dice_quien(curso_ui):
     _seleccionar(curso_ui, "100000001", "100000002")
     v.crear_equipo()
     texto = _texto_franja(v)
-    assert "ABREU SOLANO MARCOS" in texto and "equipo 1" in texto and "Separa" in texto
+    assert "ABREU SOLANO MARCOS" in texto and "equipo 1" in texto and "Sácalos" in texto
     assert [e.numero for e in curso_ui.srv.equipos_del_curso(curso_ui.curso.id)] == [1]
     assert len(v._tabla.selection()) == 2  # la selección se conserva para corregir
     assert not _boton_deshacer_visible(v)

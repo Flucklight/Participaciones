@@ -77,19 +77,19 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Dependencias: T5
 
 ### Checkpoint 2: Sección «Proyecto»
-- [x] Suite completa en verde (444 pasadas, 3 omitidas).
-- [ ] Flujo manual: formar equipos, ver los colores en claro y oscuro, separar, deshacer, F2 en cuatro modos.
+- [x] Suite completa en verde (472 pasadas, 3 omitidas).
+- [x] Flujo manual: formar equipos, ver los colores en claro y oscuro, separar, deshacer, F2 en cuatro modos.
 
 ## Fase 3: Cierre
 
-- [ ] **T6: Documentación y versión** (S)
+- [x] **T6: Documentación y versión** (S)
   - Descripción: `CLAUDE.md` (interfaz, paleta, F2 de cuatro modos), `README.md`, versión 1.4.0 y ejecutable.
   - Aceptación:
-    - [ ] Documentación coherente con R16 y con lo construido.
-    - [ ] Suite completa en verde; `scripts\construir_exe.ps1` genera el ejecutable.
+    - [x] Documentación coherente con R16 y con lo construido.
+    - [x] Suite completa en verde; `scripts\construir_exe.ps1` genera el ejecutable.
   - Verificación: suite completa y `scripts\construir_exe.ps1`
   - Archivos: `CLAUDE.md`, `README.md`, `core/version.py`
   - Dependencias: T5
 
 ### Checkpoint 3: Listo
-- [ ] Listo para revisión y commit.
+- [x] Listo para revisión y commit.
