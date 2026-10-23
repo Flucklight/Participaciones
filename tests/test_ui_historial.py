@@ -245,12 +245,12 @@ def _seleccionar_examen(v, examen):
 
 def test_la_seccion_lista_cada_examen_con_su_calificacion_o_0(hist_ex):
     filas = _filas_examenes(hist_ex.vista)
-    assert filas == [("Tareas", "0", "—"), ("Parcial 1", "42", "08/10/2026"), ("Final", "0", "—")]
+    assert filas == [("Tareas", "0", "—"), ("Proyecto final", "0", "—"), ("Parcial 1", "42", "08/10/2026"), ("Final", "0", "—")]
 
 
 def test_sin_examenes_la_seccion_avisa_que_no_hay(hist):
     v = hist.vista
-    assert _filas_examenes(v) == [("Tareas", "0", "—")]  # la fila de tareas siempre está
+    assert _filas_examenes(v) == [("Tareas", "0", "—"), ("Proyecto final", "0", "—")]  # esas dos filas siempre están
     assert "no tiene exámenes" in v._aviso_examenes.cget("text")
 
 
@@ -273,7 +273,7 @@ def test_editar_una_calificacion_existente(hist_ex):
 
     hist_ex.app.after(300, editar)
     v.editar_calificacion()
-    assert _filas_examenes(v)[1][:2] == ("Parcial 1", "47.5")
+    assert _filas_examenes(v)[2][:2] == ("Parcial 1", "47.5")
     assert hist_ex.srv.calificacion_de(hist_ex.parcial.id, hist_ex.alumno.id).puntos == 47.5
 
 
@@ -291,7 +291,7 @@ def test_calificar_un_examen_sin_capturar(hist_ex):
 
     hist_ex.app.after(300, capturar)
     v.editar_calificacion()
-    assert _filas_examenes(v)[2] == ("Final", "88", "15/10/2026")
+    assert _filas_examenes(v)[3] == ("Final", "88", "15/10/2026")
 
 
 def test_el_dialogo_de_calificacion_valida_dentro_del_dialogo(hist_ex):
@@ -313,7 +313,7 @@ def test_el_dialogo_de_calificacion_valida_dentro_del_dialogo(hist_ex):
 
     hist_ex.app.after(300, probar)
     v.editar_calificacion()
-    assert _filas_examenes(v)[2][1] == "0"
+    assert _filas_examenes(v)[3][1] == "0"
 
 
 def test_eliminar_una_calificacion_pide_confirmacion(hist_ex):
@@ -321,10 +321,10 @@ def test_eliminar_una_calificacion_pide_confirmacion(hist_ex):
     _seleccionar_examen(v, hist_ex.parcial)
     hist_ex.respuesta["si"] = False
     v.eliminar_calificacion()
-    assert _filas_examenes(v)[1][1] == "42"  # cancelado: no pasa nada
+    assert _filas_examenes(v)[2][1] == "42"  # cancelado: no pasa nada
     hist_ex.respuesta["si"] = True
     v.eliminar_calificacion()
-    assert _filas_examenes(v)[1] == ("Parcial 1", "0", "—")
+    assert _filas_examenes(v)[2] == ("Parcial 1", "0", "—")
 
 
 def test_botones_de_examenes_segun_la_seleccion(hist_ex):
@@ -349,7 +349,7 @@ def test_cambiar_de_curso_muestra_los_examenes_de_ese_curso(hist_ex):
     v.destroy()
     hist_ex.app.abrir_historial(otro.id, hist_ex.alumno.id)
     hist_ex.app.update()
-    assert _filas_examenes(hist_ex.app._vista) == [("Tareas", "0", "—"), ("Unico", "0", "—")]
+    assert _filas_examenes(hist_ex.app._vista) == [("Tareas", "0", "—"), ("Proyecto final", "0", "—"), ("Unico", "0", "—")]
 
 
 # ---------------- fila «Tareas» ----------------
@@ -358,8 +358,8 @@ def _seleccionar_tareas(v):
     v.update()
 
 
-def test_la_seccion_se_llama_examenes_y_tareas(hist):
-    assert hist.vista._titulo_calificaciones.cget("text") == "Exámenes y tareas"
+def test_la_seccion_se_llama_examenes_tareas_y_proyecto(hist):
+    assert hist.vista._titulo_calificaciones.cget("text") == "Exámenes, tareas y proyecto"
 
 
 def test_la_fila_tareas_muestra_la_calificacion_y_su_fecha(hist):
@@ -466,8 +466,8 @@ def test_editar_tareas_no_toca_las_calificaciones_de_examen(hist_ex):
     v = hist_ex.vista
     hist_ex.srv.establecer_tareas(hist_ex.curso.id, hist_ex.alumno.id, 70, date(2026, 10, 9))
     v.recargar()
-    assert _filas_examenes(v)[1] == ("Parcial 1", "42", "08/10/2026")  # el examen sigue igual
+    assert _filas_examenes(v)[2] == ("Parcial 1", "42", "08/10/2026")  # el examen sigue igual
     _seleccionar_tareas(v)
     hist_ex.respuesta["si"] = True
     v.eliminar_calificacion()
-    assert _filas_examenes(v) == [("Tareas", "0", "—"), ("Parcial 1", "42", "08/10/2026"), ("Final", "0", "—")]
+    assert _filas_examenes(v) == [("Tareas", "0", "—"), ("Proyecto final", "0", "—"), ("Parcial 1", "42", "08/10/2026"), ("Final", "0", "—")]

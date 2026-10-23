@@ -73,11 +73,11 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 3: Ver y exportar
 
-- [ ] **T6: Columna «Proyecto» y historial** (M)
+- [x] **T6: Columna «Proyecto» y historial** (M)
   - Descripción: columna «Proyecto» entre «Tareas» y los exámenes (0 sin captura, ordenable); en el historial la sección pasa a «Exámenes, tareas y proyecto» con la fila «Proyecto final» (con «· Equipo N» si tiene) que se califica, corrige y quita.
   - Aceptación:
-    - [ ] La tabla muestra «Proyecto» y se ordena por ella (descendente primero).
-    - [ ] La fila «Proyecto final» del historial se puede calificar, corregir y quitar (con confirmación; vuelve a valer 0) y no altera las demás filas.
+    - [x] La tabla muestra «Proyecto» y se ordena por ella (descendente primero).
+    - [x] La fila «Proyecto final» del historial se puede calificar, corregir y quitar (con confirmación; vuelve a valer 0) y no altera las demás filas.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_curso.py tests/test_ui_historial.py -q`
   - Archivos: `ui_desktop/vista_curso.py`, `ui_desktop/vista_historial.py`, `tests/test_ui_curso.py`, `tests/test_ui_historial.py`
   - Dependencias: T2

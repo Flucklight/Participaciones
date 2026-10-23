@@ -69,6 +69,7 @@ COLUMNAS = (
     ("nombre", "Nombre", 320, "w"),
     ("total", "Décimas", 100, "e"),
     ("tareas", "Tareas", 90, "e"),
+    ("proyecto", "Proyecto", 100, "e"),
     ("ultima", "Última", 110, "center"),
 )
 COLUMNA_EQUIPO = ("equipo", "Equipo", 100, "center")  # solo en el modo Proyecto
@@ -381,6 +382,7 @@ class VistaCurso(ctk.CTkFrame):
             "nombre": lambda f: normalizar(f.alumno.nombre_completo),
             "total": lambda f: f.total,
             "tareas": lambda f: f.tareas,
+            "proyecto": lambda f: f.proyecto,
             "equipo": lambda f: f.equipo or 0,
             "ultima": lambda f: (f.ultima_fecha is None, f.ultima_fecha or 0),
         }
@@ -410,6 +412,7 @@ class VistaCurso(ctk.CTkFrame):
             "equipo": f"Equipo {f.equipo}" if f.equipo is not None else "",
             "total": formatear_decimas(f.total),
             "tareas": formatear_decimas(f.tareas),
+            "proyecto": formatear_decimas(f.proyecto),
             "ultima": f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else "—",
             **{f"examen_{e.id}": formatear_decimas(f.calificaciones.get(e.id, 0.0)) for e in self._examenes},
         }
@@ -498,7 +501,7 @@ class VistaCurso(ctk.CTkFrame):
             self._app.abrir_historial(self.curso.id, int(iid))
 
     def _ordenar_por(self, clave: str) -> None:
-        descendente = (not self._orden[1]) if self._orden[0] == clave else (clave in ("total", "tareas", "ultima") or clave.startswith("examen_"))
+        descendente = (not self._orden[1]) if self._orden[0] == clave else (clave in ("total", "tareas", "proyecto", "ultima") or clave.startswith("examen_"))
         self._orden = (clave, descendente)
         self._dibujar_tabla()
 

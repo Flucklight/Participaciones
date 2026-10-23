@@ -22,6 +22,7 @@ COLUMNAS = (
     ("nota", "Nota", 360, "w"),
 )
 TAREAS = "tareas"  # iid de la fila de tareas en la tabla de calificaciones
+PROYECTO = "proyecto"  # iid de la fila del proyecto final
 COLUMNAS_EXAMENES = (
     ("examen", "Concepto", 360, "w"),
     ("puntos", "Calificación", 120, "e"),
@@ -40,6 +41,7 @@ class VistaHistorial(ctk.CTkFrame):
         self._lineas: dict[int, LineaHistorial] = {}
         self._lineas_examen: dict[int, LineaExamen] = {}
         self._tareas = None  # CalificacionTareas del alumno en el curso, o None
+        self._proyecto = None  # CalificacionProyecto del alumno en el curso, o None
         self._colores = configurar_estilo()
 
         self._construir_encabezado()
@@ -169,7 +171,7 @@ class VistaHistorial(ctk.CTkFrame):
         cabecera = ctk.CTkFrame(self, fg_color="transparent")
         self._cab_examenes = cabecera
         self._titulo_calificaciones = ctk.CTkLabel(
-            cabecera, text="Exámenes y tareas", font=tema.fuente(15, "bold"))
+            cabecera, text="Exámenes, tareas y proyecto", font=tema.fuente(15, "bold"))
         self._titulo_calificaciones.pack(side="left")
         self._aviso_examenes = ctk.CTkLabel(cabecera, text="", text_color=tema.COLOR_TEXTO_SUAVE)
         self._aviso_examenes.pack(side="left", padx=12)
@@ -255,15 +257,21 @@ class VistaHistorial(ctk.CTkFrame):
         self._recargar_examenes()
 
     def _recargar_examenes(self, resaltar: int | str | None = None) -> None:
-        """Tabla de calificaciones: primero «Tareas» y luego un renglón por examen del curso."""
+        """Tabla de calificaciones: «Tareas», «Proyecto final» y luego un renglón por examen."""
         lineas = self._servicio.historial_examenes(self._curso_id, self._alumno_id)
         self._lineas_examen = {l.examen.id: l for l in lineas}
         self._tareas = self._servicio.tareas_de(self._curso_id, self._alumno_id)
+        self._proyecto = self._servicio.proyecto_de(self._curso_id, self._alumno_id)
         self._tabla_examenes.delete(*self._tabla_examenes.get_children())
         self._tabla_examenes.insert(
             "", "end", iid=TAREAS, tags=() if self._tareas else ("sin",),
             values=("Tareas", formatear_decimas(self._tareas.puntos if self._tareas else 0.0),
                     formatear_fecha(self._tareas.fecha) if self._tareas else "—"),
+        )
+        self._tabla_examenes.insert(
+            "", "end", iid=PROYECTO, tags=() if self._proyecto else ("sin",),
+            values=(self._nombre_proyecto(), formatear_decimas(self._proyecto.puntos if self._proyecto else 0.0),
+                    formatear_fecha(self._proyecto.fecha) if self._proyecto else "—"),
         )
         for l in lineas:
             c = l.calificacion
@@ -279,6 +287,11 @@ class VistaHistorial(ctk.CTkFrame):
             self._tabla_examenes.selection_set(str(resaltar))
             self._tabla_examenes.see(str(resaltar))
         self._actualizar_botones_examenes()
+
+    def _nombre_proyecto(self) -> str:
+        """«Proyecto final», con «· Equipo N» si el alumno tiene equipo."""
+        equipo = self._servicio.equipo_de(self._curso_id, self._alumno_id)
+        return "Proyecto final" + (f" · Equipo {equipo}" if equipo is not None else "")
 
     def _cambiar_curso(self, etiqueta: str) -> None:
         self._curso_id = self._etiquetas[etiqueta]
@@ -340,7 +353,7 @@ class VistaHistorial(ctk.CTkFrame):
     def _fila_calificacion(self):
         """(iid, nombre, calificación o None) del renglón elegido; None si no hay selección.
 
-        El iid es `TAREAS` para la fila de tareas o el id del examen (como texto).
+        El iid es `TAREAS` o `PROYECTO` para esas filas, o el id del examen (como texto).
         """
         seleccion = self._tabla_examenes.selection()
         if not seleccion:
@@ -348,6 +361,8 @@ class VistaHistorial(ctk.CTkFrame):
         iid = seleccion[0]
         if iid == TAREAS:
             return iid, "Tareas", self._tareas
+        if iid == PROYECTO:
+            return iid, "Proyecto final", self._proyecto
         linea = self._lineas_examen.get(int(iid))
         return (iid, linea.examen.nombre, linea.calificacion) if linea else None
 
@@ -367,6 +382,10 @@ class VistaHistorial(ctk.CTkFrame):
                 return self._servicio.establecer_tareas(
                     self._curso_id, self._alumno_id, d["puntos"], d["fecha"]
                 )
+            if iid == PROYECTO:
+                return self._servicio.establecer_proyecto(
+                    self._curso_id, self._alumno_id, d["puntos"], d["fecha"]
+                )
             return self._servicio.establecer_calificacion(
                 self._curso_id, int(iid), self._alumno_id, d["puntos"], d["fecha"]
             )
@@ -379,7 +398,7 @@ class VistaHistorial(ctk.CTkFrame):
         if fila is None or fila[2] is None:
             return
         iid, nombre, actual = fila
-        vuelve = "Las tareas volverán" if iid == TAREAS else "El examen volverá"
+        vuelve = {TAREAS: "Las tareas volverán", PROYECTO: "El proyecto volverá"}.get(iid, "El examen volverá")
         if not messagebox.askyesno(
             "Quitar calificación",
             f"¿Quitar la calificación de {formatear_decimas(actual.puntos)} en «{nombre}»?"
@@ -390,6 +409,8 @@ class VistaHistorial(ctk.CTkFrame):
         try:
             if iid == TAREAS:
                 self._servicio.eliminar_tareas(self._curso_id, self._alumno_id)
+            elif iid == PROYECTO:
+                self._servicio.eliminar_proyecto(self._curso_id, self._alumno_id)
             else:
                 self._servicio.eliminar_calificacion(int(iid), self._alumno_id)
         except ErrorDominio as error:
