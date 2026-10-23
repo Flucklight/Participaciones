@@ -1,120 +1,99 @@
-# Tareas: calificaciones de exámenes
+# Tareas: calificación de tareas (módulo `tareas`)
 
-Cada tarea termina con `python -m pytest` en verde. Arranque manual: `python main.py`.
+Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque manual: `.venv\Scripts\python.exe main.py`.
 
 ## Fase 1: Núcleo (sin UI)
 
-- [x] **T1: Tablas, modelos y reglas documentadas** (S)
-  - Descripción: crear `examen` y `calificacion`, dataclasses `Examen` y `Calificacion`, y documentar las reglas nuevas antes de seguir (lo exige `CLAUDE.md`).
+- [x] **T1: Tabla, modelo y regla documentada** (S)
+  - Descripción: crear `calificacion_tareas`, la dataclass `CalificacionTareas`, y documentar R14 en `CLAUDE.md` antes de seguir (lo exige el proyecto al cambiar el modelo).
   - Aceptación:
-    - [x] `conectar()` crea las tablas en una base nueva y en una existente sin perder datos.
-    - [x] `examen` único por `(curso_id, nombre_norm)`; borrar un curso borra sus exámenes y calificaciones en cascada.
-    - [x] `CLAUDE.md` tiene el modelo de datos actualizado y las reglas R12 (exámenes y calificaciones) y R13 (promedio).
-  - Verificación: `python -m pytest tests/test_examenes.py -q` (esquema, cascada, base antigua).
-  - Archivos: `core/database.py`, `core/models.py`, `CLAUDE.md`, `tests/test_examenes.py`
+    - [x] `conectar()` crea la tabla en una base nueva y en una existente sin perder datos.
+    - [x] Una calificación por `(curso_id, alumno_id)`; borrar el curso la borra en cascada.
+    - [x] `CLAUDE.md` tiene el modelo actualizado y la regla R14.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_tareas.py -q`
+  - Archivos: `core/database.py`, `core/models.py`, `CLAUDE.md`, `tests/test_tareas.py`
   - Dependencias: ninguna
 
-- [x] **T2: `promedio_examenes`** (XS)
-  - Descripción: función pura, única fuente del promedio.
+- [x] **T2: Servicio de tareas** (M)
+  - Descripción: registrar (con la misma identificación que participaciones), reemplazo en dos pasos, deshacer, establecer y eliminar desde el historial, `tareas` en el resumen del curso y conteo al eliminar un curso.
   - Aceptación:
-    - [x] Media simple de los puntos; lista vacía devuelve `None`.
-    - [x] Un examen sin capturar (0.0) cuenta; puntos extra (más de 100) se aceptan.
-  - Verificación: `python -m pytest tests/test_promedio.py -q`
-  - Archivos: `core/promedio.py`, `tests/test_promedio.py`
-  - Dependencias: ninguna (paralelizable con T1)
-
-- [x] **T3: Exámenes: repositorio y servicio (CRUD)** (M)
-  - Descripción: crear, renombrar, listar y eliminar exámenes de un curso; contar las calificaciones que se perderían al eliminar.
-  - Aceptación:
-    - [x] Nombre vacío o duplicado (normalizado) en el curso lanza `ErrorDominio`.
-    - [x] `resumen_eliminacion_examen` devuelve cuántas calificaciones se pierden; eliminar las borra.
-    - [x] Todo el SQL está en `core/repository.py`.
-  - Verificación: `python -m pytest tests/test_examenes.py -q`
-  - Archivos: `core/repository.py`, `core/services.py`, `tests/test_examenes.py`
+    - [x] Negativo, `nan` y texto lanzan `ErrorDominio`; 0 y puntos extra se aceptan.
+    - [x] Si ya existe, devuelve `CONFIRMAR_REEMPLAZO` con la nota anterior y no guarda hasta repetir con `reemplazar=True`.
+    - [x] Deshacer restaura la anterior o elimina la calificación si no había.
+    - [x] Ambiguo y «no existe» se comportan igual que en participaciones; alumno no inscrito se rechaza.
+    - [x] `resumen_curso` trae `tareas` (0 sin captura); no cambia `total` ni `prom_examenes`.
+    - [x] El conteo de lo que se pierde al eliminar un curso incluye las calificaciones de tareas.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_tareas.py tests/test_registro.py tests/test_cursos.py -q`
+  - Archivos: `core/services.py`, `core/repository.py`, `core/models.py`, `tests/test_tareas.py`, `tests/test_cursos.py`
   - Dependencias: T1
 
-- [x] **T4: Registrar calificación, reemplazo, deshacer y promedio en el resumen** (M)
-  - Descripción: `registrar_calificacion` con el mismo flujo de identificación que las participaciones; reemplazo en dos pasos; `deshacer_calificacion`; `ResumenAlumno` con `prom_examenes`.
-  - Aceptación:
-    - [x] Calificación negativa lanza `ErrorDominio`; sin tope superior.
-    - [x] Si ya existe, devuelve `CONFIRMAR_REEMPLAZO` con la nota anterior y no guarda hasta repetir con `reemplazar=True`.
-    - [x] Deshacer restaura la nota anterior o elimina la calificación si no había.
-    - [x] Ambiguo y «no existe» se comportan igual que en participaciones.
-    - [x] `resumen_curso` trae `prom_examenes` (examen sin capturar = 0; curso sin exámenes: `None`).
-    - [x] Registrar calificaciones no cambia `total_alumno`.
-  - Verificación: `python -m pytest tests/test_calificaciones.py tests/test_registro.py -q`
-  - Archivos: `core/services.py`, `core/repository.py`, `core/models.py`, `tests/test_calificaciones.py`
-  - Dependencias: T2, T3
-
 ### Checkpoint 1: Núcleo
-- [x] `python -m pytest` completo en verde (suite actual sin modificar).
+- [x] Suite completa en verde sin modificar pruebas existentes (salvo ampliar `test_cursos.py`).
 - [x] Una base `.db` existente abre y conserva sus datos.
-- [ ] Revisión con la persona antes de seguir a la UI.
+- [x] Revisión con la persona antes de seguir a la UI.
 
-## Fase 2: Registro rápido en la pantalla Curso
+## Fase 2: Pantalla Curso
 
-- [x] **T5: Selector segmentado y captura de examen** (M)
-  - Descripción: selector `[Participación | Examen]`; en modo Examen aparece la lista de exámenes con «+ Nuevo» y el campo pasa a «Calificación»; guardar registra y muestra la franja de confirmación.
+- [x] **T3: Selector de tres modos y captura de tareas** (M)
+  - Descripción: el selector pasa a `[Participación | Examen | Tareas]`; modo Tareas con campo «Calificación de tareas», botón «Registrar tareas» y color propio; F2 recorre los tres en ciclo; ambiguo y «no existe» funcionan.
   - Aceptación:
-    - [x] Alternar modo cambia campos, texto del botón («Registrar examen») y color.
-    - [x] «+ Nuevo» abre un diálogo (nombre) y deja el examen seleccionado.
-    - [x] Tras guardar, el foco vuelve al alumno y se conservan modo y examen.
-    - [x] Ambiguo y «no existe» funcionan en modo Examen; el modo Participación no cambia.
-    - [x] Un curso sin exámenes en modo Examen muestra un aviso claro.
-  - Verificación: `python -m pytest tests/test_ui_curso.py -q` y manual: crear un examen y capturar tres alumnos.
-  - Archivos: `ui_desktop/vista_curso.py`, `ui_desktop/dialogos_curso.py`, `tests/test_ui_curso.py`
-  - Dependencias: T4
+    - [x] Alternar modo cambia campos, texto y color del botón; la lista de exámenes solo aparece en modo Examen.
+    - [x] F2 recorre Participación → Examen → Tareas → Participación.
+    - [x] Guardar muestra «<Alumno> · Tareas: X», limpia los campos, vuelve el foco al alumno y conserva el modo.
+    - [x] Los modos Participación y Examen no cambian (pruebas actuales pasan; solo se ajusta la de F2).
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_curso.py -q` y manual: capturar tres alumnos en modo Tareas.
+  - Archivos: `ui_desktop/vista_curso.py`, `ui_desktop/tema.py`, `tests/test_ui_curso.py`
+  - Dependencias: T2
 
-- [x] **T6: Deshacer, clic en fila, F2 y columnas de examen en la tabla** (M)
-  - Descripción: completar la experiencia del modo Examen.
+- [x] **T4: Reemplazo, deshacer, clic en fila y columna «Tareas»** (M)
+  - Descripción: completar la experiencia del modo Tareas y mostrar la columna en la tabla.
   - Aceptación:
-    - [x] Si ya hay calificación: franja «Ya tiene X en <examen>; se cambiará a Y» con Reemplazar y Cancelar antes de guardar. (Adelantado en T5.)
-    - [x] «Deshacer» restaura la nota anterior en modo Examen.
-    - [x] Clic en fila en modo Examen carga al alumno y su calificación actual, con foco en la calificación; en modo Participación sigue como antes.
-    - [x] F2 alterna el modo.
-    - [x] La tabla tiene una columna «Examen - <nombre>» por examen (0 si no hay captura), ordenable; sin columna de promedio. (Cambio pedido tras probar T6.)
-  - Verificación: `python -m pytest tests/test_ui_curso.py -q` y manual con teclado.
-  - Archivos: `ui_desktop/vista_curso.py`, `ui_desktop/tabla.py`, `tests/test_ui_curso.py`
-  - Dependencias: T5
+    - [x] Con calificación previa: franja «Ya tiene X en tareas; se cambiará a Y» con Reemplazar y Cancelar; no guarda hasta confirmar.
+    - [x] «Deshacer» restaura la anterior o elimina la calificación.
+    - [x] En modo Tareas, elegir un alumno (clic en fila o sugerencia) trae su calificación actual.
+    - [x] Columna «Tareas» entre Décimas y los exámenes (0 sin captura), ordenable.
+    - [x] Cambiar de modo con un reemplazo sin confirmar lo descarta sin guardar nada.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_curso.py -q` y manual con teclado.
+  - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_curso.py`
+  - Dependencias: T3
 
 ### Checkpoint 2: Registro completo
 - [x] Suite completa en verde.
-- [x] Flujo manual: crear examen, capturar una tanda, reemplazar con confirmación, deshacer, clic en fila (confirmado por la persona).
-- [ ] Revisión con la persona antes de exportación e historial.
+- [ ] Flujo manual: capturar, reemplazar con confirmación, deshacer, clic en fila, F2 en ciclo.
+- [x] Revisión con la persona antes de exportación e historial.
 
 ## Fase 3: Exportación, historial y cierre
 
-- [x] **T7: Exportación con columnas de examen y promedio** (M)
-  - Descripción: `.xlsx` y `.csv` incluyen una columna por examen y el «Promedio exámenes» como números.
+- [x] **T5: Exportación con columna «Tareas»** (S)
+  - Descripción: `.xlsx` y `.csv` incluyen «Tareas» como número, después de «Décimas» y antes de las columnas de examen.
   - Aceptación:
-    - [x] Columnas de examen en orden de creación; sin capturar = 0; todo numérico.
-    - [x] El promedio exportado coincide con `prom_examenes` del resumen; un curso sin exámenes no agrega columnas.
-    - [x] Oyentes excluidos por defecto; CSV con BOM; los errores de archivo abierto siguen siendo `ErrorDominio`.
-  - Verificación: `python -m pytest tests/test_exportacion.py -q`
-  - Archivos: `exporters/curso.py`, `core/services.py`, `tests/test_exportacion.py`
-  - Dependencias: T4
+    - [x] Siempre presente; 0 sin captura; numérica en ambos formatos.
+    - [x] Orden correcto con y sin exámenes; la columna de fecha y la de cuenta conservan su formato.
+    - [x] Oyentes excluidos por defecto; con «Incluir oyentes» salen con su calificación.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_exportacion.py -q`
+  - Archivos: `exporters/curso.py`, `tests/test_exportacion.py`
+  - Dependencias: T2
 
-- [x] **T8: Sección «Exámenes» en el historial del alumno** (M)
-  - Descripción: lista las calificaciones del alumno en el curso seleccionado; editar y eliminar con confirmación.
+- [x] **T6: Fila «Tareas» en el historial del alumno** (S)
+  - Descripción: la sección pasa a «Exámenes y tareas»; su primera fila es «Tareas» (calificación y fecha) y funcionan «Calificar / editar» y «Quitar calificación».
   - Aceptación:
-    - [x] Muestra cada examen con su calificación (0 si no está capturado).
-    - [x] Editar valida que sea mayor o igual a 0; eliminar pide confirmación; ambos actualizan la vista.
-    - [x] Las participaciones y las tarjetas de resumen no cambian.
-  - Verificación: `python -m pytest tests/test_ui_historial.py -q` y manual.
-  - Archivos: `core/services.py`, `ui_desktop/vista_historial.py`, `ui_desktop/dialogos_historial.py`, `tests/test_ui_historial.py`
-  - Dependencias: T4
+    - [x] Muestra 0 y «—» si no hay captura; editar valida ≥ 0 y fecha; quitar pide confirmación y vuelve a 0.
+    - [x] Las filas de examen y sus pruebas actuales siguen funcionando.
+    - [x] La sección sigue visible en la ventana de 720 px.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_historial.py -q` y manual.
+  - Archivos: `ui_desktop/vista_historial.py`, `ui_desktop/dialogos_historial.py`, `tests/test_ui_historial.py`
+  - Dependencias: T2
 
-- [x] **T9: Gestión de exámenes, documentación y versión** (S)
-  - Descripción: menú para renombrar y eliminar exámenes del curso (confirmación con el conteo de calificaciones), actualizar `README.md` y subir `core/version.py`.
+- [x] **T7: Eliminar curso, documentación y versión** (S)
+  - Descripción: el diálogo de eliminar curso informa también las calificaciones de tareas; actualizar `README.md` y `CLAUDE.md` (Interfaz y Exportación); subir `core/version.py`.
   - Aceptación:
-    - [x] Renombrar sin repetir nombre; eliminar muestra cuántas calificaciones se pierden y exige confirmación.
-    - [x] `README.md` y `CLAUDE.md` (Interfaz y Exportación) coherentes con lo construido.
-    - [x] Versión incrementada.
-  - Verificación: `python -m pytest` completo y manual.
-  - Archivos: `ui_desktop/vista_curso.py`, `ui_desktop/dialogos_curso.py`, `README.md`, `CLAUDE.md`, `core/version.py`
-  - Dependencias: T6, T7, T8
+    - [x] El diálogo cuenta las calificaciones de tareas y, si las hay, exige escribir ELIMINAR.
+    - [x] `README.md` y `CLAUDE.md` coherentes con lo construido; versión incrementada.
+  - Verificación: `.venv\Scripts\python.exe -m pytest` completo y manual.
+  - Archivos: `ui_desktop/dialogos.py`, `ui_desktop/vista_cursos.py`, `README.md`, `CLAUDE.md`, `core/version.py`, `tests/test_ui_cursos.py`
+  - Dependencias: T4, T5, T6
 
 ### Checkpoint final
-- [x] Todos los criterios de éxito de `SPEC.md` cumplidos (cubiertos por pruebas automáticas).
-- [x] `python -m pytest` en verde; `scripts/construir_exe.ps1` genera el ejecutable.
+- [x] Todos los criterios de éxito de `SPEC-tareas.md` cumplidos (cubiertos por pruebas automáticas).
+- [x] Suite completa en verde; `scripts\construir_exe.ps1` genera el ejecutable.
 - [ ] Listo para revisión y commit.

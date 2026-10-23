@@ -54,6 +54,14 @@ CREATE TABLE IF NOT EXISTS examen (
     UNIQUE (curso_id, nombre_norm)
 );
 
+CREATE TABLE IF NOT EXISTS calificacion_tareas (
+    curso_id  INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
+    alumno_id INTEGER NOT NULL REFERENCES alumno(id) ON DELETE CASCADE,
+    puntos    REAL NOT NULL,
+    fecha     TEXT NOT NULL,
+    PRIMARY KEY (curso_id, alumno_id)
+);
+
 CREATE TABLE IF NOT EXISTS calificacion (
     examen_id INTEGER NOT NULL REFERENCES examen(id) ON DELETE CASCADE,
     alumno_id INTEGER NOT NULL REFERENCES alumno(id) ON DELETE CASCADE,

@@ -1,49 +1,50 @@
-# Plan de implementación: calificaciones de exámenes
+# Plan de implementación: calificación de tareas (módulo `tareas`)
 
-Spec: `SPEC.md` (aprobada). Tareas en `tasks/todo.md` (lista de verificación).
+Spec aprobada: `SPEC-tareas.md`. Mapa: `MAPA-tareas.md`. Tareas en `tasks/todo.md`.
+(Los planes anteriores, de exámenes, están completos y viven en el historial de git, commits `f4bff6c` y `d0b92d0`.)
 
 ## Resumen
-Agregar exámenes por curso (solo nombre, sin tope) y una calificación por alumno y examen, capturables desde el registro rápido de la pantalla Curso con un selector segmentado `[Participación | Examen]`. El promedio de exámenes es la media simple de los puntos sobre **todos** los exámenes del curso (sin capturar = 0). Independiente de las décimas y de `total_con_piso`.
+Una calificación de tareas por alumno y curso (sin tope, ≥ 0), capturable desde un tercer modo «Tareas» del registro rápido, visible como columna en la tabla del curso, como fila en el historial del alumno y como columna en la exportación. Es un valor ya promediado que se guarda tal cual; no se calcula nada. Independiente de décimas y exámenes.
 
 ## Grafo de dependencias
 
 ```
-tablas examen/calificacion + modelos + CLAUDE.md (T1)
+tabla calificacion_tareas + modelo + R14 en CLAUDE.md (T1)
         │
-        ├── promedio_examenes (T2) ──┐
-        │                            ▼
-        └── repositorio + servicio de examenes (T3)
-                     │
-                     ▼
-        registrar calificacion + reemplazo + deshacer + promedio en resumen (T4)
-                     │
-     ┌───────────────┼────────────────┐
-     ▼               ▼                ▼
- UI selector     Exportacion     Historial
- T5 -> T6        (T7)            examenes (T8)
-     └───────────────┴────────────────┘
-                     ▼
-        gestion de examenes + docs + version (T9)
+        ▼
+servicio: registrar, reemplazo en dos pasos, deshacer, establecer/eliminar,
+          `tareas` en el resumen, conteo al eliminar curso (T2)
+        │
+   ┌────┴─────────────┬───────────────────┐
+   ▼                  ▼                   ▼
+selector de 3 modos  exportación (T5)   historial (T6)
+y captura (T3)
+   │
+   ▼
+reemplazo, deshacer, clic en fila, columna (T4)
+   └────────────┬──────────────────────────┘
+                ▼
+   diálogo de eliminar curso, docs y versión (T7)
 ```
 
-Orden: base de datos y reglas (T1–T4) → UI del registro (T5–T6) → exportación (T7) → historial (T8) → cierre (T9). T7 y T8 dependen solo de T4 y pueden ir en cualquier orden.
+Orden: T1 → T2 → T3 → T4; T5 y T6 dependen solo de T2 y pueden ir en cualquier orden; T7 al final.
 
 ## Decisiones de arquitectura
-- **Dos tablas nuevas, sin tocar las existentes.** `ESQUEMA` usa `CREATE TABLE IF NOT EXISTS`, así que una base vieja las gana al abrir; no hay migración.
-- **Una sola fuente del promedio:** `core/promedio.py::promedio_examenes(puntos)`. Los exámenes sin calificación se pasan como `0.0`; la lista completa la arma el servicio/repositorio. La UI y el exportador no calculan.
-- **Reemplazo en dos pasos, sin estado en la UI:** `registrar_calificacion` devuelve `EstadoRegistro.CONFIRMAR_REEMPLAZO` con la nota anterior; la UI muestra la franja «Ya tiene X; se cambiará a Y» y, si el usuario confirma, llama de nuevo con `reemplazar=True`. Deshacer restaura la nota anterior (o borra la calificación si no había).
-- **Se reutiliza el flujo de identificación de alumno** (cuenta, nombre parcial, ambiguo, no existe) del registro de participaciones: la parte común se extrae en `services.py`, no se duplica.
-- **UI:** el selector vive en `vista_curso.py`; el modo y el examen elegido se conservan tras guardar. El clic en fila en modo Examen carga la calificación actual del alumno.
-- Se mantiene la regla de `CLAUDE.md`: SQL solo en `core/repository.py`, `core/` sin importar `ui_*`.
+- **Una tabla nueva, sin tocar las existentes** (`CREATE TABLE IF NOT EXISTS`, sin migración). Clave primaria `(curso_id, alumno_id)`: una sola calificación vigente.
+- **Mismo patrón que exámenes**, no una abstracción nueva: el servicio ya tiene `_identificar`, la validación de puntos (`_puntos_validados`) y el reemplazo en dos pasos. Tareas los reutiliza; el resultado es un `ResultadoTareas` propio (sin `examen`), para no ensuciar `ResultadoCalificacion`.
+- **Modos de la pantalla Curso:** hoy `_modo` es `"participacion" | "examen"`. Pasa a incluir `"tareas"`; `_alternar_modo` (F2) recorre los tres en ciclo. La fila de «Examen» (lista, «＋ Nuevo», «⋯») solo se muestra en modo Examen. El reemplazo pendiente y el deshacer se generalizan para cubrir ambos tipos de calificación sin duplicar la franja de confirmación.
+- **Un solo estado de deshacer:** lo último guardado (participación, examen o tareas) es lo que «Deshacer» revierte, como ya ocurre entre participación y examen.
+- **Color del modo Tareas** en `tema.py` (verde azulado, par claro/oscuro con texto blanco legible), sin valores sueltos en las vistas.
+- Se mantiene: SQL solo en `core/repository.py`, `core/` sin importar `ui_*`, la UI no calcula.
 
 ## Riesgos y mitigaciones
 | Riesgo | Impacto | Mitigación |
 |---|---|---|
-| `vista_curso.py` (508 líneas) se vuelve difícil de seguir al añadir modos | Media | T5 aísla el estado del modo en un pequeño conjunto de métodos; si crece, extraer el panel de registro a su propio módulo en la misma tarea |
-| Regresión en el registro de participaciones | Alta | La suite actual (`test_ui_curso.py`, `test_registro.py`) debe pasar sin modificarse en cada checkpoint |
-| Exportador asume columnas fijas | Media | T7 parametriza el encabezado por los exámenes del curso y reutiliza `_numero`, con pruebas xlsx y csv |
-| Pruebas UI frágiles (diálogos modales) | Media | Seguir los helpers existentes de `tests/test_ui_curso.py` (`buscar_dialogo`, etc.) |
-| Nombres de examen con acentos/mayúsculas duplicados | Baja | `nombre_norm` con `core/normalizacion.py`, único por curso |
+| `vista_curso.py` (≈ 900 líneas) crece con un tercer modo | Media | T3 concentra el estado del modo en pocos métodos; si el archivo se vuelve inmanejable, extraer el panel de registro a su propio módulo dentro de T3 |
+| Las pruebas actuales asumen un F2 de dos modos y `_modo` binario | Media | Se ajustan solo esas pruebas (F2 en ciclo); el resto de la suite debe pasar sin tocarse |
+| Regresión en participaciones o exámenes | Alta | Suite completa en cada checkpoint; `test_registro.py`, `test_calificaciones.py` y las UI de curso sin modificar salvo lo del F2 |
+| Reemplazo pendiente compartido entre exámenes y tareas | Media | Un único `_pendiente` con el tipo de calificación; pruebas de cambiar de modo con un reemplazo sin confirmar |
+| Tabla del curso más ancha (columna nueva) | Baja | Ya tiene desplazamiento horizontal; columna angosta |
 
 ## Preguntas abiertas
-Ninguna. Los supuestos 5–8 de la spec se tomaron como aceptados.
+Ninguna para este módulo. La importación (`tareas-importacion`) tiene su propia spec y preguntas.

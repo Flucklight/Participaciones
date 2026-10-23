@@ -8,6 +8,7 @@ from datetime import date
 from .models import (
     Alumno,
     Calificacion,
+    CalificacionTareas,
     Curso,
     Examen,
     Participacion,
@@ -56,6 +57,15 @@ def _examen(fila: sqlite3.Row) -> Examen:
 def _calificacion(fila: sqlite3.Row) -> Calificacion:
     return Calificacion(
         examen_id=fila["examen_id"],
+        alumno_id=fila["alumno_id"],
+        puntos=fila["puntos"],
+        fecha=date.fromisoformat(fila["fecha"]),
+    )
+
+
+def _tareas(fila: sqlite3.Row) -> CalificacionTareas:
+    return CalificacionTareas(
+        curso_id=fila["curso_id"],
         alumno_id=fila["alumno_id"],
         puntos=fila["puntos"],
         fecha=date.fromisoformat(fila["fecha"]),
@@ -226,6 +236,7 @@ class Repositorio:
         decimas = self.decimas_por_alumno(curso_id)
         examenes = [e.id for e in self.listar_examenes(curso_id)]
         puntos = self.puntos_por_alumno(curso_id)
+        tareas = self.tareas_por_alumno(curso_id)
         filas = self._db.execute(
             "SELECT a.id, a.num_cuenta, a.nombre_completo, i.tipo,"
             "       COUNT(p.id) AS n, MAX(p.fecha) AS ultima"
@@ -248,6 +259,7 @@ class Repositorio:
                     [puntos.get(f["id"], {}).get(e, 0.0) for e in examenes]
                 ),
                 calificaciones=dict(puntos.get(f["id"], {})),
+                tareas=tareas.get(f["id"], 0.0),
             )
             for f in filas
         ]
@@ -387,3 +399,39 @@ class Repositorio:
         for f in filas:
             por_alumno.setdefault(f["alumno_id"], {})[f["examen_id"]] = f["puntos"]
         return por_alumno
+
+    # ---- calificación de tareas -------------------------------------------
+    def obtener_tareas(self, curso_id: int, alumno_id: int) -> CalificacionTareas | None:
+        fila = self._db.execute(
+            "SELECT * FROM calificacion_tareas WHERE curso_id = ? AND alumno_id = ?",
+            (curso_id, alumno_id),
+        ).fetchone()
+        return _tareas(fila) if fila else None
+
+    def guardar_tareas(self, c: CalificacionTareas) -> None:
+        """Alta o reemplazo: hay una sola calificación de tareas por alumno y curso."""
+        self._db.execute(
+            "INSERT INTO calificacion_tareas (curso_id, alumno_id, puntos, fecha) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (curso_id, alumno_id) DO UPDATE SET puntos = excluded.puntos,"
+            " fecha = excluded.fecha",
+            (c.curso_id, c.alumno_id, c.puntos, c.fecha.isoformat()),
+        )
+
+    def eliminar_tareas(self, curso_id: int, alumno_id: int) -> None:
+        self._db.execute(
+            "DELETE FROM calificacion_tareas WHERE curso_id = ? AND alumno_id = ?",
+            (curso_id, alumno_id),
+        )
+
+    def tareas_por_alumno(self, curso_id: int) -> dict[int, float]:
+        """{alumno_id: puntos} de los alumnos del curso con calificación de tareas capturada."""
+        filas = self._db.execute(
+            "SELECT alumno_id, puntos FROM calificacion_tareas WHERE curso_id = ?", (curso_id,)
+        )
+        return {f["alumno_id"]: f["puntos"] for f in filas}
+
+    def contar_tareas_curso(self, curso_id: int) -> int:
+        return self._db.execute(
+            "SELECT COUNT(*) FROM calificacion_tareas WHERE curso_id = ?", (curso_id,)
+        ).fetchone()[0]
+

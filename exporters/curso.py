@@ -89,9 +89,9 @@ def _etiqueta_tipo(tipo: TipoInscripcion) -> str:
 
 # ------------------------------------------------- columnas del resumen
 def _titulos_resumen(examenes: list[Examen], con_tipo: bool) -> list[str]:
-    """Una columna por examen y el promedio (solo si el curso tiene exámenes)."""
+    """«Tareas» siempre; una columna por examen y el promedio solo si el curso tiene exámenes."""
     return (
-        ["No.", "Cuenta", "Nombre", "Décimas"]
+        ["No.", "Cuenta", "Nombre", "Décimas", "Tareas"]
         + [f"Examen - {e.nombre}" for e in examenes]
         + (["Promedio exámenes"] if examenes else [])
         + ["Participaciones", "Última"]
@@ -102,10 +102,10 @@ def _titulos_resumen(examenes: list[Examen], con_tipo: bool) -> list[str]:
 def _valores_resumen(
     n: int, f: ResumenAlumno, examenes: list[Examen], con_tipo: bool, ultima
 ) -> list:
-    """Misma estructura que `_titulos_resumen`. Los exámenes sin calificación valen 0 y el
-    promedio lo calculó el servicio (esta capa no calcula nada)."""
+    """Misma estructura que `_titulos_resumen`. Las tareas y los exámenes sin calificación valen
+    0 y el promedio lo calculó el servicio (esta capa no calcula nada)."""
     return (
-        [n, f.alumno.num_cuenta or "", f.alumno.nombre_completo, _numero(f.total)]
+        [n, f.alumno.num_cuenta or "", f.alumno.nombre_completo, _numero(f.total), _numero(f.tareas)]
         + [_numero(f.calificaciones.get(e.id, 0.0)) for e in examenes]
         + ([_numero(f.prom_examenes)] if examenes else [])
         + [f.n_participaciones, ultima]

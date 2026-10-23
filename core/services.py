@@ -10,6 +10,7 @@ from .errores import ErrorDominio
 from .models import (
     Alumno,
     Calificacion,
+    CalificacionTareas,
     CoincidenciaOyente,
     Curso,
     EstadoRegistro,
@@ -21,6 +22,7 @@ from .models import (
     ResultadoCalificacion,
     ResultadoImportacion,
     ResultadoRegistro,
+    ResultadoTareas,
     ResumenAlumno,
     TipoInscripcion,
     VistaPreviaImportacion,
@@ -76,6 +78,11 @@ class ServicioParticipaciones:
             self._repo.contar_examenes_curso(curso_id),
             self._repo.contar_calificaciones_curso(curso_id),
         )
+
+    def resumen_eliminacion_tareas(self, curso_id: int) -> int:
+        """Cuántas calificaciones de tareas se perderían al eliminar el curso."""
+        self._curso_o_error(curso_id)
+        return self._repo.contar_tareas_curso(curso_id)
 
     def eliminar_curso(self, curso_id: int) -> None:
         """Eliminación definitiva. La confirmación es responsabilidad de la UI.
@@ -493,6 +500,77 @@ class ServicioParticipaciones:
         if not math.isfinite(valor) or valor < 0:
             raise ErrorDominio("La calificación debe ser un número mayor o igual a 0.")
         return valor
+
+    # ================= calificación de tareas =================
+    def registrar_tareas(
+        self,
+        curso_id: int,
+        consulta: str,
+        puntos: float,
+        fecha: date | None = None,
+        reemplazar: bool = False,
+    ) -> ResultadoTareas:
+        """Registro rápido de tareas: identifica al alumno igual que `registrar`."""
+        self._curso_o_error(curso_id)
+        puntos = self._puntos_validados(puntos)
+        alumno, estado, candidatos = self._identificar(curso_id, consulta)
+        if alumno:
+            return self.registrar_tareas_para_alumno(curso_id, alumno.id, puntos, fecha, reemplazar)
+        return ResultadoTareas(estado, puntos, candidatos=candidatos)
+
+    def registrar_tareas_para_alumno(
+        self,
+        curso_id: int,
+        alumno_id: int,
+        puntos: float,
+        fecha: date | None = None,
+        reemplazar: bool = False,
+    ) -> ResultadoTareas:
+        """Califica las tareas de un alumno ya identificado.
+
+        Si ya tenía calificación no la cambia hasta que se repita con `reemplazar=True`
+        (la UI avisa y pide confirmar antes).
+        """
+        self._curso_o_error(curso_id)
+        puntos = self._puntos_validados(puntos)
+        alumno = self._alumno_o_error(alumno_id)
+        if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
+            raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
+        anterior = self._repo.obtener_tareas(curso_id, alumno_id)
+        if anterior and not reemplazar:
+            return ResultadoTareas(EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumno, anterior)
+        with self._repo.transaccion():
+            self._repo.guardar_tareas(
+                CalificacionTareas(curso_id, alumno_id, puntos, fecha or date.today())
+            )
+        return ResultadoTareas(EstadoRegistro.GUARDADO, puntos, alumno, anterior)
+
+    def deshacer_tareas(
+        self, curso_id: int, alumno_id: int, anterior: CalificacionTareas | None
+    ) -> None:
+        """Restaura la calificación previa, o la elimina si no había ninguna."""
+        with self._repo.transaccion():
+            if anterior is None:
+                self._repo.eliminar_tareas(curso_id, alumno_id)
+            else:
+                self._repo.guardar_tareas(anterior)
+
+    def tareas_de(self, curso_id: int, alumno_id: int) -> CalificacionTareas | None:
+        return self._repo.obtener_tareas(curso_id, alumno_id)
+
+    def establecer_tareas(
+        self, curso_id: int, alumno_id: int, puntos: float, fecha: date
+    ) -> CalificacionTareas:
+        """Alta o corrección desde el historial (el profesor ya eligió y confirmó)."""
+        self.registrar_tareas_para_alumno(curso_id, alumno_id, puntos, fecha, reemplazar=True)
+        return self._repo.obtener_tareas(curso_id, alumno_id)
+
+    def eliminar_tareas(self, curso_id: int, alumno_id: int) -> None:
+        """Quita la calificación: las tareas vuelven a valer 0. La confirmación es de la UI."""
+        if self._repo.obtener_tareas(curso_id, alumno_id) is None:
+            raise ErrorDominio("Este alumno no tiene calificación de tareas.")
+        with self._repo.transaccion():
+            self._repo.eliminar_tareas(curso_id, alumno_id)
 
     # ================= importación =================
     def previsualizar_importacion(self, lista: ListaInscripcion) -> VistaPreviaImportacion:

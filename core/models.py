@@ -68,6 +68,17 @@ class Calificacion:
 
 
 @dataclass
+class CalificacionTareas:
+    """Calificación de tareas de un alumno en un curso: el promedio ya calculado en otra
+    plataforma (una por alumno y curso; sin tope)."""
+
+    curso_id: int
+    alumno_id: int
+    puntos: float
+    fecha: date
+
+
+@dataclass
 class LineaExamen:
     """Un examen del curso con la calificación del alumno (None si aún no se captura)."""
 
@@ -105,6 +116,8 @@ class ResumenAlumno:
     prom_examenes: float | None = None
     # {examen_id: puntos} de los exámenes con calificación capturada (el resto vale 0).
     calificaciones: dict[int, float] = field(default_factory=dict)
+    # Calificación de tareas (promedio ya calculado fuera); 0 si no se ha capturado.
+    tareas: float = 0.0
 
 
 class EstadoRegistro(str, Enum):
@@ -138,6 +151,17 @@ class ResultadoCalificacion:
     # todavía no se reemplazó nada; con GUARDADO es lo que `deshacer_calificacion` restaura.
     calificacion_anterior: Calificacion | None = None
     promedio: float | None = None
+    candidatos: list[Alumno] = field(default_factory=list)
+
+
+@dataclass
+class ResultadoTareas:
+    estado: EstadoRegistro
+    puntos: float
+    alumno: Alumno | None = None
+    # La calificación que había antes (None si era la primera). Con CONFIRMAR_REEMPLAZO todavía
+    # no se reemplazó nada; con GUARDADO es lo que `deshacer_tareas` restaura.
+    anterior: CalificacionTareas | None = None
     candidatos: list[Alumno] = field(default_factory=list)
 
 
