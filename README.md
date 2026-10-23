@@ -26,6 +26,7 @@ participacion(id, curso_id, alumno_id, decimas, fecha, nota)
 examen(id, curso_id, nombre, nombre_norm)               -- único por curso+nombre; sin puntaje máximo
 calificacion(examen_id, alumno_id, puntos, fecha)       -- una por alumno y examen
 calificacion_tareas(curso_id, alumno_id, puntos, fecha) -- una por alumno y curso; promedio ya calculado fuera
+calificacion_proyecto(curso_id, alumno_id, puntos, fecha) -- una por alumno y curso; sin vínculo con el equipo
 equipo(curso_id, numero, nombre, proyecto)              -- equipos de proyecto (nombre y proyecto opcionales); no se borran al quedar vacíos
 miembro_equipo(curso_id, alumno_id, numero)             -- un alumno en un solo equipo por curso
 ```
@@ -67,12 +68,14 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 
 **Exámenes y tareas.** El selector `[Participación | Examen | Tareas | Proyecto]` (tecla **F2**, recorre los cuatro modos) cambia el registro rápido a calificaciones: eliges el examen (o creas uno con «＋ Nuevo»; «⋯» renombra o elimina), escribes cuenta o nombre y la calificación. Si el alumno ya tenía nota, la app avisa «Ya tiene X; se cambiará a Y» y pide confirmar; «Deshacer» la restaura. La tabla gana una columna «Examen - <nombre>» por examen. En modo **Tareas** capturas la calificación de tareas de cada alumno (con la misma advertencia de reemplazo y «Deshacer»); la tabla muestra la columna «Tareas».
 
-**Equipos para el proyecto final.** El modo **Proyecto** agrupa la tabla por equipo, con una fila de encabezado coloreada («Equipo 2 · 3 alumnos») y dos tonos que se alternan; los alumnos sin equipo quedan al final. Con **«Formar equipos»** haces clic en los alumnos (otro clic los quita) y pulsas «Crear equipo con N alumnos»; «Sacar de equipo» los saca de su equipo. Con clic derecho también puedes **sacar** a un alumno o **agregarlo a un equipo ya formado** (submenú con la lista). Todo se puede deshacer, y un alumno que ya tiene equipo nunca se mueve sin que lo saques antes.
+**Equipos para el proyecto final.** El modo **Proyecto** agrupa la tabla por equipo, con una fila de encabezado coloreada («Equipo 2 · 3 alumnos · Los Cuervos · Sistema de riego») y dos tonos que se alternan; los alumnos sin equipo quedan al final. Con **«Formar equipos»** haces clic en los alumnos (otro clic los quita) y pulsas «Crear equipo con N alumnos»: un diálogo te pide, si quieres, el nombre del equipo y el título de su proyecto (doble clic en el equipo para editarlos después); «Sacar de equipo» los saca de su equipo. Con clic derecho también puedes **sacar** a un alumno o **agregarlo a un equipo ya formado** (submenú con la lista). Todo se puede deshacer, y un alumno que ya tiene equipo nunca se mueve sin que lo saques antes.
+
+**Calificar el proyecto final.** En el modo Proyecto, con «Formar equipos» apagado, escribes la cuenta o el nombre de un alumno, o **«equipo N»** para todo un equipo (también puedes hacer clic en la fila del equipo o usar «Usar equipo N»), y la calificación del proyecto. Calificar a un equipo **copia la misma nota a cada miembro**; después puedes corregir a cada alumno por separado y nada se sincroniza solo. Si algún miembro ya tenía otra nota, la app avisa («2 de 4 miembros ya tienen calificación») y pide confirmar; «Deshacer» devuelve las notas previas de todos. Sin captura vale 0, no tiene tope y es independiente de décimas, exámenes y tareas.
 
 **Importar tareas desde un archivo.** Con «⬆ Importar tareas» eliges el `.xlsx` o `.csv` que descargas de la otra plataforma. La app reconoce a cada alumno por su nombre (o por número de cuenta si el archivo trae una columna «Cuenta») y te muestra una vista previa: qué columna importar (por omisión la del promedio), quién cambia («antes → después»), qué coincidencias son dudosas (solo se aplican si las marcas) y qué filas se omiten. Nunca crea alumnos ni toca a quienes el archivo no menciona. Al aplicar, puedes **deshacer la importación** completa.
 
 ### Exportar
-Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Tareas, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Participaciones, Última, y hoja opcional «Participaciones» con el detalle) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
+Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Tareas, Equipo, Proyecto, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Participaciones, Última, y hoja opcional «Participaciones» con el detalle) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
 
 ### Historial de un alumno
 - Tarjetas de resumen (total, número de registros, última participación).
@@ -80,7 +83,7 @@ Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, D�
 - Selector de curso (un alumno puede estar en varios).
 - Tabla de participaciones con fecha, décimas y nota; cada fila se puede editar o borrar.
 - Agregar participaciones con fecha anterior.
-- Sección **Exámenes y tareas**: la fila «Tareas» y la calificación de cada examen del curso (0 si no se ha capturado); se puede calificar, corregir o quitar.
+- Sección **Exámenes, tareas y proyecto**: la fila «Tareas», la fila «Proyecto final» (con su equipo) y la calificación de cada examen del curso (0 si no se ha capturado); se puede calificar, corregir o quitar.
 - Convertir oyente en regular.
 
 ## Importación de listas
