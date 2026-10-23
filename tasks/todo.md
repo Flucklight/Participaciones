@@ -46,13 +46,13 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 3: Pantalla Curso
 
-- [ ] **T4: Diálogo con vista previa y botón** (M)
+- [x] **T4: Diálogo con vista previa y botón** (M)
   - Descripción: botón «⬆ Importar tareas» junto a «Exportar»; `DialogoImportarTareas` elige archivo, columna, muestra el resumen, la tabla «antes → después» y casillas de dudosas; aplicar.
   - Aceptación:
-    - [ ] Cambiar la columna actualiza la vista previa; cancelar no guarda nada.
-    - [ ] «Aplicar N cambios» guarda y recarga la tabla del curso.
-    - [ ] Archivo inválido muestra el mensaje sin cerrar la app.
-    - [ ] Colores solo desde `tema.py`.
+    - [x] Cambiar la columna actualiza la vista previa; cancelar no guarda nada.
+    - [x] «Aplicar N cambios» guarda y recarga la tabla del curso.
+    - [x] Archivo inválido muestra el mensaje sin cerrar la app.
+    - [x] Colores solo desde `tema.py`.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_curso.py -q`
   - Archivos: `ui_desktop/dialogos_tareas.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_curso.py`
   - Dependencias: T3

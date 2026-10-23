@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
@@ -22,9 +23,11 @@ from core.models import (
 )
 from core.normalizacion import normalizar
 from exporters.curso import exportar_curso, nombre_sugerido
+from importers.calificaciones_plataforma import leer_calificaciones
 
 from . import tema
 from .dialogos_curso import DialogoAlumnoNuevo, DialogoElegirAlumno, DialogoExamen, DialogoExportar
+from .dialogos_tareas import DialogoImportarTareas
 from .formato import formatear_decimas, leer_decimas, titulo_legible
 from .tabla import ESTILO, configurar_estilo
 
@@ -114,7 +117,11 @@ class VistaCurso(ctk.CTkFrame):
                      font=tema.fuente(22, "bold")).pack(anchor="w")
         ctk.CTkLabel(bloque, text=f"Grupo {self.curso.grupo}  ·  Semestre {self.curso.ciclo}",
                      anchor="w", text_color=tema.COLOR_TEXTO_SUAVE).pack(anchor="w")
-        for texto, comando in (("⬇  Exportar", self.exportar), ("＋  Agregar alumno", self.agregar_alumno)):
+        for texto, comando in (
+            ("⬇  Exportar", self.exportar),
+            ("＋  Agregar alumno", self.agregar_alumno),
+            ("⬆  Importar tareas", self.importar_tareas),
+        ):
             ctk.CTkButton(
                 titulo, text=texto, height=34, command=comando,
                 fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
@@ -997,6 +1004,45 @@ class VistaCurso(ctk.CTkFrame):
             self.recargar()
             self._resaltar(alumno.id)
             self._exito(f"{alumno.nombre_completo} agregado al curso.", deshacible=False)
+
+    # ====================== importar tareas ======================
+    def importar_tareas(self) -> None:
+        """Lee el archivo de otra plataforma, muestra la vista previa y, si se confirma, lo aplica."""
+        ruta = filedialog.askopenfilename(
+            parent=self, title="Selecciona el archivo de calificaciones",
+            filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Todos los archivos", "*.*")],
+        )
+        if not ruta:
+            return
+        try:
+            archivo = leer_calificaciones(ruta)
+        except ErrorDominio as error:
+            messagebox.showerror("No se pudo leer el archivo", str(error), parent=self)
+            self._error(str(error))
+            return
+        opciones = DialogoImportarTareas(
+            self, self.curso, Path(ruta).name, archivo,
+            lambda clave: self._servicio.previsualizar_importacion_tareas(self.curso.id, archivo, clave),
+        ).mostrar()
+        if not opciones:
+            return
+        try:
+            resultado = self._servicio.importar_tareas(
+                self.curso.id, archivo, opciones["clave"], opciones["confirmadas"]
+            )
+        except ErrorDominio as error:
+            messagebox.showerror("No se pudo importar", str(error), parent=self)
+            self._error(str(error))
+            return
+        self._pendiente = None
+        self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None  # lo anterior ya no se deshace
+        self.recargar()
+        self._exito(
+            f"Tareas importadas: {resultado.actualizadas} actualizadas, "
+            f"{resultado.omitidas} omitidas.",
+            deshacible=False,
+        )
+        self._entrada_alumno.focus_set()
 
     # ====================== exportar ======================
     def exportar(self) -> None:
