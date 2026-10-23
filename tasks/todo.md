@@ -33,13 +33,13 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 2: Guardar y deshacer
 
-- [ ] **T3: Importar y deshacer** (M)
+- [x] **T3: Importar y deshacer** (M)
   - Descripción: `importar_tareas(..., confirmadas)` aplica en una transacción lo claro más las dudosas confirmadas; `deshacer_importacion_tareas` restaura o elimina.
   - Aceptación:
-    - [ ] Reemplaza sin pedir confirmación por alumno; fecha de captura = hoy.
-    - [ ] Una dudosa no confirmada no se aplica.
-    - [ ] Alumnos fuera del archivo intactos; décimas y exámenes sin cambios.
-    - [ ] Deshacer deja los valores exactamente como estaban; un error a medias no deja nada guardado.
+    - [x] Reemplaza sin pedir confirmación por alumno; fecha de captura = hoy.
+    - [x] Una dudosa no confirmada no se aplica.
+    - [x] Alumnos fuera del archivo intactos; décimas y exámenes sin cambios.
+    - [x] Deshacer deja los valores exactamente como estaban; un error a medias no deja nada guardado.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_importar_tareas.py tests/test_tareas.py -q`
   - Archivos: `core/services.py`, `core/repository.py`, `tests/test_importar_tareas.py`
   - Dependencias: T2

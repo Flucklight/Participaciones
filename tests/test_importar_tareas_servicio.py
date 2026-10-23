@@ -193,3 +193,120 @@ def test_archivo_ficticio_a_vista_previa(tmp_path, servicio, curso_importado, fo
     assert [l.puntos for l in vista.claras] == [90, 60]
     assert len(vista.omitidas) == 1 and vista.advertencia_grupo == ""
     assert (vista.cambian, vista.iguales) == (2, 0)
+
+
+# ================= aplicar y deshacer =================
+from datetime import date
+
+
+def importar(servicio, curso, *filas, confirmadas=(), fecha=None, **kwargs):
+    return servicio.importar_tareas(curso.id, archivo(*filas, **kwargs), "H", confirmadas, fecha)
+
+
+def tareas(servicio, curso):
+    return {r.alumno.nombre_completo: r.tareas for r in servicio.resumen_curso(curso.id)}
+
+
+def test_importar_guarda_las_coincidencias_claras(servicio, curso_importado):
+    r = importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 85.5), fila("ACOSTA ORTEGA", "ELENA", 70),
+                 fecha=date(2027, 3, 9))
+    assert (r.actualizadas, r.iguales, r.omitidas) == (2, 0, 0)
+    assert tareas(servicio, curso_importado)["ABREU SOLANO MARCOS"] == 85.5
+    alumno = servicio.resumen_curso(curso_importado.id)[0].alumno
+    assert servicio.tareas_de(curso_importado.id, alumno.id).fecha == date(2027, 3, 9)
+
+
+def test_fecha_por_omision_es_hoy(servicio, curso_importado):
+    importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 85.5))
+    alumno = servicio.resumen_curso(curso_importado.id)[0].alumno
+    assert servicio.tareas_de(curso_importado.id, alumno.id).fecha == date.today()
+
+
+def test_reemplaza_sin_pedir_confirmacion_por_alumno(servicio, curso_importado):
+    servicio.registrar_tareas(curso_importado.id, "100000001", 40)
+    importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 90))
+    assert tareas(servicio, curso_importado)["ABREU SOLANO MARCOS"] == 90
+
+
+def test_una_dudosa_sin_confirmar_no_se_aplica(servicio, curso_importado):
+    r = importar(servicio, curso_importado, fila("ABREU", "MARCOS", 90))
+    assert r.actualizadas == 0 and r.omitidas == 1
+    assert tareas(servicio, curso_importado)["ABREU SOLANO MARCOS"] == 0
+
+
+def test_una_dudosa_confirmada_se_aplica(servicio, curso_importado):
+    abreu = next(r.alumno for r in servicio.resumen_curso(curso_importado.id) if r.alumno.num_cuenta == "100000001")
+    r = importar(servicio, curso_importado, fila("ABREU", "MARCOS", 90), confirmadas={abreu.id})
+    assert r.actualizadas == 1 and tareas(servicio, curso_importado)["ABREU SOLANO MARCOS"] == 90
+
+
+def test_confirmar_una_que_no_era_dudosa_no_cambia_nada_extra(servicio, curso_importado):
+    otro = next(r.alumno for r in servicio.resumen_curso(curso_importado.id) if r.alumno.num_cuenta == "100000002")
+    r = importar(servicio, curso_importado, fila("ABREU", "MARCOS", 90), confirmadas={otro.id})
+    assert r.actualizadas == 0 and tareas(servicio, curso_importado)["ACOSTA ORTEGA ELENA"] == 0
+
+
+def test_lo_omitido_y_lo_que_el_archivo_no_menciona_queda_intacto(servicio, curso_importado):
+    servicio.registrar_tareas(curso_importado.id, "100000002", 55)
+    importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 90), fila("NADIE", "NUEVO", 10),
+             fila("ACOSTA ORTEGA", "ELENA", None))
+    assert tareas(servicio, curso_importado)["ACOSTA ORTEGA ELENA"] == 55  # celda vacía: no cambia
+    assert len(servicio.resumen_curso(curso_importado.id)) == 4  # no se crearon alumnos
+
+
+def test_un_valor_igual_no_se_reescribe(servicio, curso_importado):
+    servicio.registrar_tareas(curso_importado.id, "100000001", 90, date(2027, 1, 1))
+    r = importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 90), fecha=date(2027, 3, 9))
+    assert (r.actualizadas, r.iguales) == (0, 1)
+    alumno = servicio.resumen_curso(curso_importado.id)[0].alumno
+    assert servicio.tareas_de(curso_importado.id, alumno.id).fecha == date(2027, 1, 1)
+
+
+def test_no_altera_decimas_ni_examenes(servicio, curso_importado):
+    servicio.registrar(curso_importado.id, "100000001", 7)
+    examen = servicio.crear_examen(curso_importado.id, "Parcial 1")
+    servicio.registrar_calificacion(curso_importado.id, examen.id, "100000001", 60)
+    antes = [(r.total, r.prom_examenes) for r in servicio.resumen_curso(curso_importado.id)]
+    importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 90))
+    assert antes == [(r.total, r.prom_examenes) for r in servicio.resumen_curso(curso_importado.id)]
+
+
+def test_deshacer_restaura_anteriores_y_elimina_nuevas(servicio, curso_importado):
+    servicio.registrar_tareas(curso_importado.id, "100000001", 40, date(2027, 1, 1))
+    antes = tareas(servicio, curso_importado)
+    r = importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 90), fila("ACOSTA ORTEGA", "ELENA", 70))
+    assert tareas(servicio, curso_importado) != antes
+    servicio.deshacer_importacion_tareas(curso_importado.id, r.anteriores)
+    assert tareas(servicio, curso_importado) == antes
+    abreu = next(x.alumno for x in servicio.resumen_curso(curso_importado.id) if x.alumno.num_cuenta == "100000001")
+    acosta = next(x.alumno for x in servicio.resumen_curso(curso_importado.id) if x.alumno.num_cuenta == "100000002")
+    assert servicio.tareas_de(curso_importado.id, abreu.id).fecha == date(2027, 1, 1)  # recupera hasta la fecha
+    assert servicio.tareas_de(curso_importado.id, acosta.id) is None  # no existía: se elimina
+
+
+def test_si_algo_falla_a_la_mitad_no_se_guarda_nada(servicio, curso_importado, monkeypatch):
+    original = servicio._repo.guardar_tareas
+    llamadas = []
+
+    def falla_en_la_segunda(c):
+        llamadas.append(c)
+        if len(llamadas) == 2:
+            raise RuntimeError("fallo simulado")
+        original(c)
+
+    monkeypatch.setattr(servicio._repo, "guardar_tareas", falla_en_la_segunda)
+    with pytest.raises(RuntimeError):
+        importar(servicio, curso_importado, fila("ABREU SOLANO", "MARCOS", 90), fila("ACOSTA ORTEGA", "ELENA", 70))
+    monkeypatch.undo()
+    assert set(tareas(servicio, curso_importado).values()) == {0.0}
+
+
+def test_archivo_ficticio_completo_con_deshacer(tmp_path, servicio, curso_importado):
+    from importers.calificaciones_plataforma import leer_calificaciones
+    from tests.plataforma import crear_excel_plataforma
+
+    ruta = crear_excel_plataforma(tmp_path / "p.xlsx", [("ABREU SOLANO", "MARCOS", [80, 90, 100])], grupo="1510")
+    r = servicio.importar_tareas(curso_importado.id, leer_calificaciones(ruta))
+    assert tareas(servicio, curso_importado)["ABREU SOLANO MARCOS"] == 90
+    servicio.deshacer_importacion_tareas(curso_importado.id, r.anteriores)
+    assert tareas(servicio, curso_importado)["ABREU SOLANO MARCOS"] == 0

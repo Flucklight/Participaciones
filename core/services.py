@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import sqlite3
 from collections import Counter
+from collections.abc import Iterable
 from datetime import date
 
 from .errores import ErrorDominio
@@ -25,6 +26,7 @@ from .models import (
     Participacion,
     ResultadoCalificacion,
     ResultadoImportacion,
+    ResultadoImportacionTareas,
     ResultadoRegistro,
     ResultadoTareas,
     ResumenAlumno,
@@ -673,6 +675,46 @@ class ServicioParticipaciones:
             columna, lineas, [a for a in inscritos if a.id not in mencionados],
             self._advertencia_grupo(curso, archivo),
         )
+
+    def importar_tareas(
+        self,
+        curso_id: int,
+        archivo: ArchivoCalificaciones,
+        clave_columna: str | None = None,
+        confirmadas: Iterable[int] = (),
+        fecha: date | None = None,
+    ) -> ResultadoImportacionTareas:
+        """Guarda la columna elegida: las coincidencias claras y las dudosas que la persona confirmó
+        (`confirmadas`: ids de alumno). Reemplaza sin preguntar; todo o nada. Devuelve lo necesario
+        para `deshacer_importacion_tareas`."""
+        vista = self.previsualizar_importacion_tareas(curso_id, archivo, clave_columna)
+        confirmadas = set(confirmadas)
+        aplicables = vista.claras + [l for l in vista.dudosas if l.alumno.id in confirmadas]
+        fecha = fecha or date.today()
+        anteriores: dict[int, CalificacionTareas | None] = {}
+        with self._repo.transaccion():
+            for linea in aplicables:
+                if not linea.cambia:
+                    continue
+                anteriores[linea.alumno.id] = self._repo.obtener_tareas(curso_id, linea.alumno.id)
+                self._repo.guardar_tareas(
+                    CalificacionTareas(curso_id, linea.alumno.id, linea.puntos, fecha)
+                )
+        iguales = sum(1 for l in aplicables if not l.cambia)
+        return ResultadoImportacionTareas(
+            len(anteriores), iguales, len(vista.lineas) - len(aplicables), anteriores
+        )
+
+    def deshacer_importacion_tareas(
+        self, curso_id: int, anteriores: dict[int, CalificacionTareas | None]
+    ) -> None:
+        """Deja las calificaciones como estaban antes de importar (o las elimina si no existían)."""
+        with self._repo.transaccion():
+            for alumno_id, anterior in anteriores.items():
+                if anterior is None:
+                    self._repo.eliminar_tareas(curso_id, alumno_id)
+                else:
+                    self._repo.guardar_tareas(anterior)
 
     @staticmethod
     def _columna_de_archivo(archivo: ArchivoCalificaciones, clave: str | None):

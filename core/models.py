@@ -301,3 +301,12 @@ class VistaPreviaTareas:
     @property
     def iguales(self) -> int:
         return sum(1 for l in self.claras if not l.cambia)
+
+
+@dataclass
+class ResultadoImportacionTareas:
+    actualizadas: int  # guardadas (nuevas o con otro valor)
+    iguales: int  # coincidían y ya tenían ese valor: no se reescriben
+    omitidas: int  # omitidas, más las dudosas que no se confirmaron
+    # {alumno_id: calificación que tenía (None si no tenía)} de lo que se guardó; lo usa deshacer.
+    anteriores: dict[int, CalificacionTareas | None] = field(default_factory=dict)
