@@ -17,6 +17,7 @@ from core.models import (
     EstadoRegistro,
     Examen,
     ResultadoCalificacion,
+    ResultadoProyecto,
     ResultadoRegistro,
     ResultadoTareas,
     ResumenAlumno,
@@ -53,11 +54,11 @@ AJUSTES_MODO = {
         "Escribe cuenta o nombre y la calificación de tareas (el promedio de la otra plataforma) "
         "y presiona Enter.",
     ),
-    # Sin campo de registro todavía: en este modo se arman los equipos del proyecto.
+    # Evaluar (con «Formar equipos» apagado) y, con él encendido, armar los equipos del proyecto.
     "proyecto": (
-        "Proyecto", 100, "Calificación del proyecto", tema.COLOR_PROYECTO, tema.COLOR_PROYECTO_HOVER,
-        "Los equipos del proyecto se arman con «Formar equipos»; los alumnos se ven agrupados "
-        "por equipo.",
+        "Registrar proyecto", 150, "Calificación del proyecto", tema.COLOR_PROYECTO, tema.COLOR_PROYECTO_HOVER,
+        "Escribe cuenta o nombre (o «equipo N» para todo el equipo) y la calificación del proyecto, y "
+        "presiona Enter. «Formar equipos» arma los equipos.",
     ),
 }
 SIN_EXAMENES = "(sin exámenes)"
@@ -104,6 +105,8 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_importacion: dict[int, CalificacionTareas | None] | None = None
         # Último cambio de equipos: ("formado", número) o ("separado", {alumno_id: equipo}) para deshacer.
         self._ultima_equipo: tuple[str, object] | None = None
+        # Última calificación de proyecto: (equipo o None, {alumno_id: calificación previa}) para deshacer.
+        self._ultimo_proyecto: tuple[int | None, dict] | None = None
 
         self._construir_encabezado()
         self._construir_registro()
@@ -214,6 +217,14 @@ class VistaCurso(ctk.CTkFrame):
             fg_color=tema.COLOR_ACENTO, hover_color=tema.COLOR_ACENTO_HOVER,
         )
         self._boton_guardar.grid(row=0, column=2 + len(ATAJOS_DECIMAS), padx=(10, 0))
+        # Solo en modo Proyecto (ocupa el lugar de +5/+10/+25): cambia el destino al equipo del alumno.
+        self._boton_usar_equipo = ctk.CTkButton(
+            fila, text="Usar equipo", width=130, height=38, command=self.usar_equipo, state="disabled",
+            fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
+            text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
+        )
+        self._boton_usar_equipo.grid(row=0, column=2, columnspan=len(ATAJOS_DECIMAS), padx=3)
+        self._boton_usar_equipo.grid_remove()
 
         # Solo visible en modo Proyecto: herramientas de equipo (la tabla es el selector de alumnos).
         self._formando = False
@@ -538,6 +549,7 @@ class VistaCurso(ctk.CTkFrame):
         texto = self._entrada_alumno.get()
         if self._elegido and texto != self._elegido.nombre_completo:
             self._elegido = None
+            self._actualizar_usar_equipo()
         if self._elegido or not texto.strip():
             self._ocultar_sugerencias()
             return
@@ -581,16 +593,19 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.delete(0, "end")
         self._entrada_alumno.insert(0, alumno.nombre_completo)
         self._ocultar_sugerencias()
-        if self._modo in ("examen", "tareas"):
+        if self._modo in ("examen", "tareas", "proyecto"):
             self._cargar_calificacion_actual(alumno)
+        self._actualizar_usar_equipo()
         self._entrada_decimas.focus_set()
         self._entrada_decimas.select_range(0, "end")
 
     def _cargar_calificacion_actual(self, alumno: Alumno) -> None:
-        """En modo Examen o Tareas, elegir a un alumno trae su calificación para corregirla."""
+        """En modo Examen, Tareas o Proyecto, elegir a un alumno trae su calificación para corregirla."""
         self._entrada_decimas.delete(0, "end")
         if self._modo == "tareas":
             actual = self._servicio.tareas_de(self.curso.id, alumno.id)
+        elif self._modo == "proyecto":
+            actual = self._servicio.proyecto_de(self.curso.id, alumno.id)
         elif self._examen_actual is None:
             return
         else:
@@ -622,6 +637,9 @@ class VistaCurso(ctk.CTkFrame):
             return
         if self._modo == "tareas":
             self._guardar_tareas()
+            return
+        if self._modo == "proyecto":
+            self._guardar_proyecto()
             return
         consulta = self._entrada_alumno.get().strip()
         if not consulta:
@@ -683,6 +701,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_calificacion = None
         self._ultima_tareas = None
         self._ultima_importacion = None
+        self._ultimo_proyecto = None
         self._ultima_equipo = None
         nuevo = "  (alumno agregado)" if alumno_nuevo else ""
         aplicadas = resultado.decimas_aplicadas
@@ -705,6 +724,9 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.focus_set()
 
     def deshacer(self) -> None:
+        if self._ultimo_proyecto is not None:
+            self._deshacer_proyecto()
+            return
         if self._ultima_equipo is not None:
             self._deshacer_equipo()
             return
@@ -740,17 +762,15 @@ class VistaCurso(ctk.CTkFrame):
         self._modo = MODOS[valor]
         self._pendiente = None
         texto, ancho, placeholder, color, hover, ayuda = AJUSTES_MODO[self._modo]
-        if self._modo == "proyecto":  # sin campo de registro: solo herramientas de equipo
-            self._ocultar_sugerencias()
-            self._fila_registro.pack_forget()
-            self._fila_equipos.pack(fill="x", padx=16, pady=(6, 12))
+        if self._modo == "proyecto":  # «Formar equipos» arriba; el registro solo evaluando
+            self._fila_equipos.pack(fill="x", padx=16, pady=(6, 0))
+            self._mostrar_registro(not self._formando)
         else:
             self._fila_equipos.pack_forget()
             if self._formando:
                 self._formando = False
                 self._aplicar_modo_formar()
-            if not self._fila_registro.winfo_manager():
-                self._fila_registro.pack(fill="x", padx=16, pady=(6, 12))
+            self._mostrar_registro(True)
         if (self._modo == "proyecto") != era_proyecto:  # cambian las columnas y el agrupado
             self._aplicar_columnas()
             self.recargar()  # también trae los equipos al día
@@ -761,12 +781,34 @@ class VistaCurso(ctk.CTkFrame):
             self._fila_examen.pack_forget()
         for boton in self._atajos:  # +5, +10 y +25 solo sirven para décimas
             boton.grid() if self._modo == "participacion" else boton.grid_remove()
+        if self._modo == "proyecto":
+            self._boton_usar_equipo.grid()
+        else:
+            self._boton_usar_equipo.grid_remove()
+        self._entrada_alumno.configure(
+            placeholder_text="Número de cuenta, nombre o «equipo N»…" if self._modo == "proyecto"
+            else "Número de cuenta o nombre del alumno…"
+        )
+        self._actualizar_usar_equipo()
         self._entrada_decimas.delete(0, "end")
         self._entrada_decimas.configure(placeholder_text=placeholder)
         self._selector_modo.configure(selected_color=color, selected_hover_color=hover)
         self._boton_guardar.configure(text=texto, width=ancho, fg_color=color, hover_color=hover)
         self._info(ayuda)
-        (self._tabla if self._modo == "proyecto" else self._entrada_alumno).focus_set()
+        (self._tabla if self._formando else self._entrada_alumno).focus_set()
+
+    def _mostrar_registro(self, visible: bool) -> None:
+        """Muestra u oculta la fila del campo de registro. En «Proyecto» va debajo de «Formar equipos»."""
+        if visible:
+            if self._modo == "proyecto":  # siempre se recoloca: ya podía estar arriba de la fila de equipos
+                self._fila_registro.pack(fill="x", padx=16, pady=(6, 12), after=self._fila_equipos)
+            elif not self._fila_registro.winfo_manager():
+                self._fila_registro.pack(fill="x", padx=16, pady=(6, 12))
+        else:
+            self._ocultar_sugerencias()
+            self._fila_registro.pack_forget()
+        if self._modo == "proyecto":  # sin el registro debajo, la fila de equipos cierra la tarjeta
+            self._fila_equipos.pack_configure(pady=(6, 0) if visible else (6, 12))
 
     def _cargar_examenes(self, seleccionar: int | None = None) -> None:
         self._examenes = self._servicio.listar_examenes(self.curso.id)
@@ -929,8 +971,11 @@ class VistaCurso(ctk.CTkFrame):
 
     def _advertir_reemplazo(self, alumno: Alumno, puntos: float, texto: str) -> None:
         self._pendiente = (alumno, puntos)
-        self._mensaje.configure(text=f"⚠  {alumno.nombre_completo}  ·  {texto}",
-                                text_color=tema.COLOR_AVISO)
+        self._mostrar_aviso_reemplazo(f"{alumno.nombre_completo}  ·  {texto}")
+
+    def _mostrar_aviso_reemplazo(self, texto: str) -> None:
+        """Franja de advertencia con «Reemplazar» / «Cancelar» (el botón lleva el color del modo)."""
+        self._mensaje.configure(text=f"⚠  {texto}", text_color=tema.COLOR_AVISO)
         self._ocultar_acciones()
         _t, _a, _p, color, hover, _h = AJUSTES_MODO[self._modo]  # el botón lleva el color del modo
         self._boton_confirmar.configure(fg_color=color, hover_color=hover)
@@ -942,6 +987,9 @@ class VistaCurso(ctk.CTkFrame):
             return
         if self._modo == "tareas":
             self._confirmar_reemplazo_tareas()
+            return
+        if self._modo == "proyecto":
+            self._confirmar_reemplazo_proyecto()
             return
         if self._examen_actual is None:
             return
@@ -973,6 +1021,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = None
         self._ultima_tareas = None
         self._ultima_importacion = None
+        self._ultimo_proyecto = None
         self._ultima_equipo = None
         self._ultima_calificacion = (
             resultado.examen.id, resultado.alumno.id, resultado.calificacion_anterior
@@ -1101,6 +1150,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = None
         self._ultima_calificacion = None
         self._ultima_importacion = None
+        self._ultimo_proyecto = None
         self._ultima_equipo = None
         self._ultima_tareas = (resultado.alumno.id, resultado.anterior)
         self._pendiente = None
@@ -1130,6 +1180,7 @@ class VistaCurso(ctk.CTkFrame):
     def _deshacer_importacion(self) -> None:
         anteriores = self._ultima_importacion
         self._ultima_importacion = None
+        self._ultimo_proyecto = None
         self._ultima_equipo = None
         try:
             self._servicio.deshacer_importacion_tareas(self.curso.id, anteriores)
@@ -1138,6 +1189,173 @@ class VistaCurso(ctk.CTkFrame):
             return
         self.recargar()
         self._info(f"Se deshizo la importación: {len(anteriores)} calificaciones de tareas restauradas.")
+        self._entrada_alumno.focus_set()
+
+    # ====================== calificación del proyecto ======================
+    def _equipo_del_elegido(self) -> int | None:
+        if self._elegido is None:
+            return None
+        fila = next((f for f in self._filas if f.alumno.id == self._elegido.id), None)
+        return fila.equipo if fila else None
+
+    def _actualizar_usar_equipo(self) -> None:
+        numero = self._equipo_del_elegido() if self._modo == "proyecto" else None
+        self._boton_usar_equipo.configure(
+            state="normal" if numero is not None else "disabled",
+            text="Usar equipo" if numero is None else f"Usar equipo {numero}",
+        )
+
+    def usar_equipo(self) -> None:
+        """Cambia el destino de la calificación al equipo del alumno cargado («equipo N»)."""
+        numero = self._equipo_del_elegido()
+        if numero is None:
+            return
+        self._elegido = None
+        self._entrada_alumno.delete(0, "end")
+        self._entrada_alumno.insert(0, f"equipo {numero}")
+        self._ocultar_sugerencias()
+        self._actualizar_usar_equipo()
+        self._entrada_decimas.focus_set()
+        self._entrada_decimas.select_range(0, "end")
+
+    def _guardar_proyecto(self) -> None:
+        consulta = self._entrada_alumno.get().strip()
+        if not consulta:
+            self._error("Escribe un número de cuenta, un nombre o «equipo N».")
+            self._entrada_alumno.focus_set()
+            return
+        try:
+            puntos = leer_decimas(self._entrada_decimas.get())
+        except ValueError:
+            self._error("La calificación del proyecto debe ser un número (por ejemplo 8.5 o 85).")
+            self._entrada_decimas.focus_set()
+            return
+
+        try:
+            if self._elegido:
+                resultado = self._servicio.registrar_proyecto_para_alumno(
+                    self.curso.id, self._elegido.id, puntos
+                )
+            else:
+                resultado = self._servicio.registrar_proyecto(self.curso.id, consulta, puntos)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+
+        if resultado.estado == EstadoRegistro.GUARDADO:
+            self._proyecto_guardado(resultado)
+        elif resultado.estado == EstadoRegistro.CONFIRMAR_REEMPLAZO:
+            self._advertir_proyecto(resultado)
+        elif resultado.estado == EstadoRegistro.AMBIGUO:
+            alumno = DialogoElegirAlumno(self, consulta, resultado.candidatos, self._tipos).mostrar()
+            if alumno:
+                self._elegido = alumno
+                self._guardar_proyecto()
+            else:
+                self._info("Registro cancelado: había varias coincidencias.")
+        else:
+            self._ofrecer_alta_proyecto(consulta, puntos, resultado)
+
+    def _advertir_proyecto(self, resultado: ResultadoProyecto) -> None:
+        """Hay notas distintas que se reemplazarían: avisa y espera confirmación (nada se guardó)."""
+        nueva = formatear_decimas(resultado.puntos)
+        if resultado.equipo is not None:
+            destino = resultado.equipo
+            total, n = len(resultado.alumnos), resultado.con_otra
+            texto = (f"Equipo {destino}  ·  {n} de {total} miembros ya "
+                     f"{'tiene' if n == 1 else 'tienen'} calificación; se cambiarán a {nueva}.")
+        else:
+            destino = resultado.alumnos[0]
+            anterior = resultado.anteriores[destino.id]
+            texto = (f"{destino.nombre_completo}  ·  Ya tiene {formatear_decimas(anterior.puntos)} "
+                     f"en el proyecto; se cambiará a {nueva}.")
+        self._pendiente = (destino, resultado.puntos)
+        self._mostrar_aviso_reemplazo(texto)
+
+    def _confirmar_reemplazo_proyecto(self) -> None:
+        destino, puntos = self._pendiente
+        self._pendiente = None
+        try:
+            if isinstance(destino, int):
+                resultado = self._servicio.registrar_proyecto_equipo(
+                    self.curso.id, destino, puntos, reemplazar=True
+                )
+            else:
+                resultado = self._servicio.registrar_proyecto_para_alumno(
+                    self.curso.id, destino.id, puntos, reemplazar=True
+                )
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        self._proyecto_guardado(resultado)
+
+    def _ofrecer_alta_proyecto(self, consulta: str, puntos: float, resultado: ResultadoProyecto) -> None:
+        def crear_y_calificar(datos: dict) -> ResultadoProyecto:
+            if datos["alumno_id"]:
+                self._servicio.inscribir_alumno_existente(self.curso.id, datos["alumno_id"], datos["tipo"])
+                alumno_id = datos["alumno_id"]
+            else:
+                alumno_id = self._servicio.crear_alumno_en_curso(
+                    self.curso.id, datos["nombre"], datos["tipo"], datos["cuenta"]
+                ).id
+            return self._servicio.registrar_proyecto_para_alumno(self.curso.id, alumno_id, puntos)
+
+        creado = DialogoAlumnoNuevo(
+            self, crear_y_calificar, consulta, None, resultado.candidatos,
+            resumen_registro=f"proyecto: {formatear_decimas(puntos)}",
+        ).mostrar()
+        if creado:
+            self._proyecto_guardado(creado, alumno_nuevo=True)
+        else:
+            self._info(f"Registro cancelado: «{consulta}» no está en este curso.")
+            self._entrada_alumno.focus_set()
+
+    def _proyecto_guardado(self, resultado: ResultadoProyecto, alumno_nuevo: bool = False) -> None:
+        nueva = formatear_decimas(resultado.puntos)
+        if resultado.equipo is not None:
+            k = len(resultado.alumnos)
+            texto = f"Equipo {resultado.equipo}  ·  Proyecto: {nueva} ({k} alumno{'s' if k != 1 else ''})"
+        else:
+            alumno = resultado.alumnos[0]
+            anterior = resultado.anteriores.get(alumno.id)
+            antes = f"  (antes {formatear_decimas(anterior.puntos)})" if anterior else ""
+            nuevo = "  (alumno agregado)" if alumno_nuevo else ""
+            texto = f"{alumno.nombre_completo}  ·  Proyecto: {nueva}{antes}{nuevo}"
+        self._exito(texto, deshacible=True)
+        self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
+        self._ultima_importacion = None
+        self._ultima_equipo = None
+        self._ultimo_proyecto = (resultado.equipo, resultado.anteriores)
+        self._pendiente = None
+        self._elegido = None
+        self._entrada_alumno.delete(0, "end")
+        self._entrada_decimas.delete(0, "end")
+        self._ocultar_sugerencias()
+        self._actualizar_usar_equipo()
+        self.recargar()
+        if len(resultado.alumnos) == 1:
+            self._resaltar(resultado.alumnos[0].id)
+        else:
+            self._resaltar_miembros([a.id for a in resultado.alumnos])
+        self._entrada_alumno.focus_set()
+
+    def _deshacer_proyecto(self) -> None:
+        equipo, anteriores = self._ultimo_proyecto
+        self._ultimo_proyecto = None
+        try:
+            self._servicio.deshacer_proyecto(self.curso.id, anteriores)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        self.recargar()
+        if equipo is not None:
+            self._info(f"Se deshizo la calificación del proyecto del equipo {equipo} ({len(anteriores)} alumnos).")
+        else:
+            alumno = next((f.alumno for f in self._filas if f.alumno.id in anteriores), None)
+            self._info(
+                "Se deshizo la calificación del proyecto"
+                + (f" de {alumno.nombre_completo}." if alumno else ".")
+            )
         self._entrada_alumno.focus_set()
 
     # ====================== equipos de proyecto ======================
@@ -1155,6 +1373,8 @@ class VistaCurso(ctk.CTkFrame):
         if seleccion:
             self._tabla.selection_remove(*seleccion)
         self._tabla.configure(selectmode="extended" if self._formando else "browse")
+        if self._modo == "proyecto":
+            self._mostrar_registro(not self._formando)
         if self._formando:
             self._boton_formar.configure(
                 fg_color=tema.COLOR_PROYECTO, hover_color=tema.COLOR_PROYECTO_HOVER,
@@ -1216,6 +1436,7 @@ class VistaCurso(ctk.CTkFrame):
             return
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
+        self._ultimo_proyecto = None
         self._ultima_equipo = ("formado", resultado.numero)
         self.recargar()
         self._resaltar_miembros([a.id for a in resultado.miembros])
@@ -1302,6 +1523,7 @@ class VistaCurso(ctk.CTkFrame):
             return
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
+        self._ultimo_proyecto = None
         self._ultima_equipo = ("separado", separados)
         self.recargar()
         self._resaltar_miembros(list(separados))
@@ -1325,6 +1547,7 @@ class VistaCurso(ctk.CTkFrame):
         ids = [a.id for a in resultado.miembros]
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
+        self._ultimo_proyecto = None
         self._ultima_equipo = ("agregado", (numero, ids))
         self.recargar()
         self._resaltar_miembros(ids)
@@ -1402,6 +1625,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None  # lo anterior ya no se deshace
         self._ultima_importacion = resultado.anteriores or None
         self._ultima_equipo = None
+        self._ultimo_proyecto = None
         self.recargar()
         self._exito(
             f"Tareas importadas: {resultado.actualizadas} actualizadas, "

@@ -44,24 +44,24 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 2: Modo evaluar
 
-- [ ] **T4: Evaluar a un alumno** (M)
+- [x] **T4: Evaluar a un alumno** (M)
   - Descripción: en «Proyecto» con «Formar equipos» apagado se ve el campo de registro («Calificación del proyecto», botón «Registrar proyecto»); mismo flujo que tareas: identificación, reemplazo «Ya tiene X en el proyecto; se cambiará a Y», «Deshacer», clic en fila carga la nota actual.
   - Aceptación:
-    - [ ] Apagar «Formar equipos» muestra el registro; encenderlo lo oculta (como ahora) y el clic vuelve a seleccionar.
-    - [ ] Guardar a un alumno muestra «<Alumno> · Proyecto: 8»; reemplazo con confirmar/cancelar; deshacer restaura.
-    - [ ] «Deshacer» revierte solo lo último (participación, examen, tareas, proyecto o equipos); otra captura reemplaza lo deshacible.
-    - [ ] F2 y el cambio de modo conservan lo que ya funcionaba.
+    - [x] Apagar «Formar equipos» muestra el registro; encenderlo lo oculta (como ahora) y el clic vuelve a seleccionar.
+    - [x] Guardar a un alumno muestra «<Alumno> · Proyecto: 8»; reemplazo con confirmar/cancelar; deshacer restaura.
+    - [x] «Deshacer» revierte solo lo último (participación, examen, tareas, proyecto o equipos); otra captura reemplaza lo deshacible.
+    - [x] F2 y el cambio de modo conservan lo que ya funcionaba.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_proyecto.py tests/test_ui_equipos.py -q`
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_proyecto.py`, `tests/test_ui_equipos*.py` (ajustar donde cambie lo visible)
   - Dependencias: T2
 
-- [ ] **T5: Evaluar a un equipo** (M)
+- [x] **T5: Evaluar a un equipo** (M)
   - Descripción: escribir «equipo N» califica a todo el equipo; botón «Usar equipo N» junto al campo cuando el alumno cargado tiene equipo; advertencia «N de M» con Reemplazar/Cancelar; deshacer de todos; franja «Equipo 3 · Proyecto: 9.5 (4 alumnos)».
   - Aceptación:
-    - [ ] «equipo 3» + «9.5» + Enter pone 9.5 a los 4 y la franja lo dice; todo posible sin mouse.
-    - [ ] «Usar equipo N» solo se habilita si el alumno cargado tiene equipo y pone «equipo N» en el campo.
-    - [ ] Si 2 de 4 tenían otra nota: «2 de 4 miembros del equipo 3 ya tienen calificación; se cambiarán a 9.5», no guarda hasta confirmar; «Deshacer» devuelve las 4 notas previas.
-    - [ ] Corregir a un solo alumno no mueve al resto del equipo.
+    - [x] «equipo 3» + «9.5» + Enter pone 9.5 a los 4 y la franja lo dice; todo posible sin mouse.
+    - [x] «Usar equipo N» solo se habilita si el alumno cargado tiene equipo y pone «equipo N» en el campo.
+    - [x] Si 2 de 4 tenían otra nota: «2 de 4 miembros del equipo 3 ya tienen calificación; se cambiarán a 9.5», no guarda hasta confirmar; «Deshacer» devuelve las 4 notas previas.
+    - [x] Corregir a un solo alumno no mueve al resto del equipo.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_proyecto.py -q`
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_proyecto.py`
   - Dependencias: T3, T4

@@ -62,15 +62,26 @@ def test_el_modo_proyecto_usa_su_propio_color(curso_ui):
     assert v._selector_modo.cget("selected_color") == tema.COLOR_PROYECTO
 
 
-def test_en_proyecto_se_oculta_el_registro_y_al_salir_vuelve(curso_ui):
+def test_en_proyecto_el_registro_se_ve_evaluando_y_se_oculta_formando(curso_ui):
     v = curso_ui.vista
     assert v._fila_registro.winfo_manager() == "pack"
     _en_proyecto(curso_ui)
-    assert v._fila_registro.winfo_manager() == ""
+    assert v._fila_registro.winfo_manager() == "pack"  # evaluar: «Formar equipos» apagado
     assert "Formar equipos" in _texto_franja(v)
+    v.alternar_formar()
+    assert v._fila_registro.winfo_manager() == ""  # formando no hay campo de registro
+    v.alternar_formar()
+    assert v._fila_registro.winfo_manager() == "pack"
+    v.alternar_formar()
     v._selector_modo.set("Tareas")
     v._cambiar_modo("Tareas")
     assert v._fila_registro.winfo_manager() == "pack"
+
+
+def test_en_proyecto_formar_equipos_va_arriba_y_el_registro_debajo(curso_ui):
+    v = _en_proyecto(curso_ui)
+    curso_ui.app.update()
+    assert v._fila_equipos.winfo_rooty() < v._fila_registro.winfo_rooty()
 
 
 def test_la_columna_equipo_solo_existe_en_proyecto(curso_ui):
