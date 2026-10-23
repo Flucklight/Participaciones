@@ -26,6 +26,7 @@ from exporters.curso import exportar_curso, nombre_sugerido
 from importers.calificaciones_plataforma import leer_calificaciones
 
 from . import tema
+from .agrupar import agrupar_por_equipo, es_encabezado, iid_encabezado
 from .dialogos_curso import DialogoAlumnoNuevo, DialogoElegirAlumno, DialogoExamen, DialogoExportar
 from .dialogos_tareas import DialogoImportarTareas
 from .formato import formatear_decimas, leer_decimas, titulo_legible
@@ -34,7 +35,7 @@ from .tabla import ESTILO, configurar_estilo
 MAX_SUGERENCIAS = 6
 ATAJOS_DECIMAS = (5, 10, 25)
 MS_RESALTADO = 2500
-MODOS = {"Participación": "participacion", "Examen": "examen", "Tareas": "tareas"}
+MODOS = {"Participación": "participacion", "Examen": "examen", "Tareas": "tareas", "Proyecto": "proyecto"}
 # Por modo: (texto del botón, ancho, placeholder del campo, color, color al pasar el ratón, ayuda)
 AJUSTES_MODO = {
     "participacion": (
@@ -51,6 +52,12 @@ AJUSTES_MODO = {
         "Escribe cuenta o nombre y la calificación de tareas (el promedio de la otra plataforma) "
         "y presiona Enter.",
     ),
+    # Sin campo de registro todavía: en este modo se arman los equipos del proyecto.
+    "proyecto": (
+        "Proyecto", 100, "Calificación del proyecto", tema.COLOR_PROYECTO, tema.COLOR_PROYECTO_HOVER,
+        "Los equipos del proyecto se arman con «Formar equipos»; los alumnos se ven agrupados "
+        "por equipo.",
+    ),
 }
 SIN_EXAMENES = "(sin exámenes)"
 
@@ -62,6 +69,7 @@ COLUMNAS = (
     ("tareas", "Tareas", 90, "e"),
     ("ultima", "Última", 110, "center"),
 )
+COLUMNA_EQUIPO = ("equipo", "Equipo", 100, "center")  # solo en el modo Proyecto
 
 
 class VistaCurso(ctk.CTkFrame):
@@ -264,6 +272,7 @@ class VistaCurso(ctk.CTkFrame):
         self._tabla.bind("<ButtonRelease-1>", self._al_clic_tabla)
         self._tabla.bind("<Double-1>", self._al_doble_clic)
         self._tabla.bind("<F2>", self._alternar_modo)
+        self._tabla.bind("<<TreeviewSelect>>", self._al_seleccionar)
         barra = ctk.CTkScrollbar(marco, command=self._tabla.yview)
         # Con varios exámenes las columnas pueden no caber: la tabla se desplaza horizontalmente.
         barra_h = ctk.CTkScrollbar(marco, orientation="horizontal", command=self._tabla.xview)
@@ -272,6 +281,10 @@ class VistaCurso(ctk.CTkFrame):
         self._tabla.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
         barra.pack(side="right", fill="y", padx=(0, 4), pady=8)
         self._tabla.tag_configure("oyente", foreground=colores["suave"])
+        for banda in (0, 1):  # equipos: encabezado fuerte y fila suave, dos tonos alternados
+            self._tabla.tag_configure(f"enc{banda}", background=colores[f"enc{banda}"],
+                                      font=tema.fuente(12, "bold"))
+            self._tabla.tag_configure(f"fila{banda}", background=colores[f"fila{banda}"])
         self._tabla.tag_configure("reciente", background=colores["reciente"])
 
     # ====================== datos / tabla ======================
@@ -281,7 +294,8 @@ class VistaCurso(ctk.CTkFrame):
             (f"examen_{e.id}", f"Examen - {e.nombre}", max(120, 7 * (len(e.nombre) + 9) + 40), "e")
             for e in self._examenes
         )
-        self._columnas = COLUMNAS[:-1] + examenes + COLUMNAS[-1:]
+        fijas = COLUMNAS[:3] + ((COLUMNA_EQUIPO,) if self._modo == "proyecto" else ()) + COLUMNAS[3:-1]
+        self._columnas = fijas + examenes + COLUMNAS[-1:]
         self._tabla.configure(columns=[c[0] for c in self._columnas])
         for clave, titulo, ancho, alineacion in self._columnas:
             self._tabla.heading(clave, text=titulo, anchor=alineacion,
@@ -321,6 +335,7 @@ class VistaCurso(ctk.CTkFrame):
             "nombre": lambda f: normalizar(f.alumno.nombre_completo),
             "total": lambda f: f.total,
             "tareas": lambda f: f.tareas,
+            "equipo": lambda f: f.equipo or 0,
             "ultima": lambda f: (f.ultima_fecha is None, f.ultima_fecha or 0),
         }
         if clave.startswith("examen_"):
@@ -332,26 +347,59 @@ class VistaCurso(ctk.CTkFrame):
 
     def _dibujar_tabla(self) -> None:
         self._tabla.delete(*self._tabla.get_children())
-        for f in self._filtradas():
-            self._tabla.insert(
-                "", "end", iid=str(f.alumno.id),
-                values=(
-                    self._numeros[f.alumno.id],
-                    f.alumno.num_cuenta or "—",
-                    f.alumno.nombre_completo + ("   (oyente)" if f.tipo == TipoInscripcion.OYENTE else ""),
-                    formatear_decimas(f.total),
-                    formatear_decimas(f.tareas),
-                    *(formatear_decimas(f.calificaciones.get(e.id, 0.0)) for e in self._examenes),
-                    f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else "—",
-                ),
-                tags=("oyente",) if f.tipo == TipoInscripcion.OYENTE else (),
-            )
+        filas = self._filtradas()
+        if self._modo == "proyecto":
+            self._insertar_agrupadas(filas)
+        else:
+            for f in filas:
+                self._insertar_alumno(f)
+        self._poner_encabezados()
+        self._actualizar_resumen()
+
+    def _insertar_alumno(self, f: ResumenAlumno, banda: int | None = None) -> None:
+        valores = {
+            "numero": self._numeros[f.alumno.id],
+            "cuenta": f.alumno.num_cuenta or "—",
+            "nombre": f.alumno.nombre_completo + ("   (oyente)" if f.tipo == TipoInscripcion.OYENTE else ""),
+            "equipo": f"Equipo {f.equipo}" if f.equipo is not None else "",
+            "total": formatear_decimas(f.total),
+            "tareas": formatear_decimas(f.tareas),
+            "ultima": f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else "—",
+            **{f"examen_{e.id}": formatear_decimas(f.calificaciones.get(e.id, 0.0)) for e in self._examenes},
+        }
+        etiquetas = ("oyente",) if f.tipo == TipoInscripcion.OYENTE else ()
+        if banda is not None:
+            etiquetas += (f"fila{banda}",)
+        self._tabla.insert(
+            "", "end", iid=str(f.alumno.id),
+            values=tuple(valores[c[0]] for c in self._columnas), tags=etiquetas,
+        )
+
+    def _insertar_agrupadas(self, filas: list[ResumenAlumno]) -> None:
+        """Modo Proyecto: una fila de encabezado por equipo y debajo sus miembros."""
+        for grupo in agrupar_por_equipo(filas):
+            if grupo.numero is not None:
+                valores = {c[0]: "" for c in self._columnas}
+                valores["nombre"] = grupo.titulo
+                self._tabla.insert(
+                    "", "end", iid=iid_encabezado(grupo.numero),
+                    values=tuple(valores[c[0]] for c in self._columnas), tags=(f"enc{grupo.banda}",),
+                )
+            for f in grupo.filas:
+                self._insertar_alumno(f, grupo.banda)
+
+    def _al_seleccionar(self, _evento=None) -> None:
+        """Los encabezados de equipo no son alumnos: nunca quedan seleccionados."""
+        encabezados = [i for i in self._tabla.selection() if es_encabezado(i)]
+        if encabezados:
+            self._tabla.selection_remove(*encabezados)
+
+    def _poner_encabezados(self) -> None:
         for clave, titulo, *_ in self._columnas:
             flecha = ""
             if clave == self._orden[0]:
                 flecha = "  ▼" if self._orden[1] else "  ▲"
             self._tabla.heading(clave, text=titulo + flecha)
-        self._actualizar_resumen()
 
     def _actualizar_resumen(self) -> None:
         regulares = [f for f in self._filas if f.tipo == TipoInscripcion.REGULAR]
@@ -367,7 +415,7 @@ class VistaCurso(ctk.CTkFrame):
     def _al_clic_tabla(self, evento) -> None:
         """Un clic en una fila pone al alumno en el campo de registro y pasa a las décimas."""
         iid = self._tabla.identify_row(evento.y)
-        if not iid or self._tabla.identify_region(evento.x, evento.y) == "heading":
+        if not iid or es_encabezado(iid) or self._tabla.identify_region(evento.x, evento.y) == "heading":
             return
         fila = next((f for f in self._filas if str(f.alumno.id) == iid), None)
         if fila:
@@ -376,7 +424,7 @@ class VistaCurso(ctk.CTkFrame):
     def _al_doble_clic(self, evento) -> None:
         """Doble clic en una fila abre el historial de ese alumno."""
         iid = self._tabla.identify_row(evento.y)
-        if iid and self._tabla.identify_region(evento.x, evento.y) != "heading":
+        if iid and not es_encabezado(iid) and self._tabla.identify_region(evento.x, evento.y) != "heading":
             self._app.abrir_historial(self.curso.id, int(iid))
 
     def _ordenar_por(self, clave: str) -> None:
@@ -625,9 +673,18 @@ class VistaCurso(ctk.CTkFrame):
 
     # ====================== modos Examen y Tareas ======================
     def _cambiar_modo(self, valor: str) -> None:
+        era_proyecto = self._modo == "proyecto"
         self._modo = MODOS[valor]
         self._pendiente = None
         texto, ancho, placeholder, color, hover, ayuda = AJUSTES_MODO[self._modo]
+        if self._modo == "proyecto":  # sin campo de registro: solo herramientas de equipo
+            self._ocultar_sugerencias()
+            self._fila_registro.pack_forget()
+        elif not self._fila_registro.winfo_manager():
+            self._fila_registro.pack(fill="x", padx=16, pady=(6, 12))
+        if (self._modo == "proyecto") != era_proyecto:  # cambian las columnas y el agrupado
+            self._aplicar_columnas()
+            self.recargar()  # también trae los equipos al día
         if self._modo == "examen":
             self._fila_examen.pack(fill="x", padx=16, pady=(6, 0), before=self._fila_registro)
             self._cargar_examenes()
@@ -640,7 +697,7 @@ class VistaCurso(ctk.CTkFrame):
         self._selector_modo.configure(selected_color=color, selected_hover_color=hover)
         self._boton_guardar.configure(text=texto, width=ancho, fg_color=color, hover_color=hover)
         self._info(ayuda)
-        self._entrada_alumno.focus_set()
+        (self._tabla if self._modo == "proyecto" else self._entrada_alumno).focus_set()
 
     def _cargar_examenes(self, seleccionar: int | None = None) -> None:
         self._examenes = self._servicio.listar_examenes(self.curso.id)
@@ -878,7 +935,7 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.focus_set()
 
     def _alternar_modo(self, _evento=None) -> str:
-        """F2: recorre los modos (Participación → Examen → Tareas) sin soltar el teclado."""
+        """F2: recorre los modos (Participación → Examen → Tareas → Proyecto) sin soltar el teclado."""
         nombres = list(MODOS)
         actual = next(n for n, m in MODOS.items() if m == self._modo)
         valor = nombres[(nombres.index(actual) + 1) % len(nombres)]

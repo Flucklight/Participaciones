@@ -19,6 +19,14 @@ COLOR_EXAMEN = ("#5B46B2", "#7A64E0")           # modo Examen
 COLOR_EXAMEN_HOVER = ("#4A3894", "#664FCB")
 COLOR_TAREAS = ("#0F766E", "#0D8A80")           # modo Tareas (verde azulado)
 COLOR_TAREAS_HOVER = ("#0B5F58", "#0A736B")
+COLOR_PROYECTO = ("#A23B72", "#B8508A")         # modo Proyecto (ciruela)
+COLOR_PROYECTO_HOVER = ("#862F5D", "#9C4276")
+
+# --- equipos (tabla del modo Proyecto): dos tonos que se alternan; encabezado fuerte y fila suave ---
+COLOR_EQUIPO_A_ENCABEZADO = ("#C9D7F2", "#34456B")
+COLOR_EQUIPO_A_FILA = ("#EEF2FA", "#262D3C")
+COLOR_EQUIPO_B_ENCABEZADO = ("#E6C6DD", "#5A3763")
+COLOR_EQUIPO_B_FILA = ("#F8EEF5", "#33263A")
 
 # --- estados ---------------------------------------------------------------
 COLOR_EXITO = ("#237A5A", "#4FC79A")

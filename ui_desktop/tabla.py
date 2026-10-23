@@ -31,4 +31,8 @@ def configurar_estilo() -> dict[str, str]:
         "suave": tema.COLOR_TEXTO_SUAVE[i],
         "reciente": tema.COLOR_RECIENTE[i],
         "aviso": tema.COLOR_AVISO[i],
+        "enc0": tema.COLOR_EQUIPO_A_ENCABEZADO[i],
+        "fila0": tema.COLOR_EQUIPO_A_FILA[i],
+        "enc1": tema.COLOR_EQUIPO_B_ENCABEZADO[i],
+        "fila1": tema.COLOR_EQUIPO_B_FILA[i],
     }

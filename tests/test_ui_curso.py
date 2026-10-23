@@ -613,7 +613,7 @@ def test_clic_en_fila_en_modo_participacion_no_carga_calificaciones(curso_ui):
     assert v._entrada_decimas.get() == ""
 
 
-def test_f2_recorre_los_tres_modos_en_ciclo(curso_ui):
+def test_f2_recorre_los_modos_en_ciclo(curso_ui):
     v = curso_ui.vista
     for campo in (v._entrada_alumno, v._entrada_decimas):
         assert campo._entry.bind("<F2>")  # el Entry de tk guarda el enlace
@@ -621,6 +621,8 @@ def test_f2_recorre_los_tres_modos_en_ciclo(curso_ui):
     assert v._selector_modo.get() == "Examen"
     v._alternar_modo()
     assert v._modo == "tareas" and v._selector_modo.get() == "Tareas"
+    v._alternar_modo()
+    assert v._modo == "proyecto" and v._selector_modo.get() == "Proyecto"
     v._alternar_modo()
     assert v._modo == "participacion" and v._selector_modo.get() == "Participación"
 

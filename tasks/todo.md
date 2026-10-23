@@ -33,14 +33,14 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 2: Sección «Proyecto»
 
-- [ ] **T3: Modo «Proyecto» y tabla agrupada por equipo** (L: el riesgo está en la tabla)
+- [x] **T3: Modo «Proyecto» y tabla agrupada por equipo** (L: el riesgo está en la tabla)
   - Descripción: cuarto modo (F2 recorre cuatro), color ciruela, columna «Equipo» solo en este modo, y la tabla agrupada con filas de encabezado coloreadas (variante C). Sin campo de registro todavía.
   - Aceptación:
-    - [ ] El selector tiene cuatro modos y F2 los recorre en ciclo; los otros tres modos no cambian.
-    - [ ] En «Proyecto» la tabla muestra «Equipo», agrupa por número con encabezados «Equipo N · M alumnos», tonos alternados y los sin equipo al final.
-    - [ ] Los encabezados no reaccionan a clic, doble clic ni selección; el filtro y «Mostrar oyentes» los ocultan si el equipo queda vacío.
-    - [ ] Ordenar por otra columna ordena dentro de cada equipo.
-    - [ ] Colores solo desde `tema.py`; se ve bien en claro y oscuro.
+    - [x] El selector tiene cuatro modos y F2 los recorre en ciclo; los otros tres modos no cambian.
+    - [x] En «Proyecto» la tabla muestra «Equipo», agrupa por número con encabezados «Equipo N · M alumnos», tonos alternados y los sin equipo al final.
+    - [x] Los encabezados no reaccionan a clic, doble clic ni selección; el filtro y «Mostrar oyentes» los ocultan si el equipo queda vacío.
+    - [x] Ordenar por otra columna ordena dentro de cada equipo.
+    - [x] Colores solo desde `tema.py`; se ve bien en claro y oscuro.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_equipos.py tests/test_ui_curso.py -q` y captura en claro y oscuro
   - Archivos: `ui_desktop/tema.py`, `ui_desktop/tabla.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`, `tests/test_ui_curso.py`
   - Dependencias: T2
