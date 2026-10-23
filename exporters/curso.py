@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from core.calificacion_final import Ponderaciones, redondear
 from core.errores import ErrorDominio
 from core.models import Curso, Examen, ResumenAlumno, TipoInscripcion
 from core.services import ServicioParticipaciones
@@ -89,13 +90,13 @@ def _etiqueta_tipo(tipo: TipoInscripcion) -> str:
 
 # ------------------------------------------------- columnas del resumen
 def _titulos_resumen(examenes: list[Examen], con_tipo: bool) -> list[str]:
-    """«Tareas», «Equipo» y «Proyecto» siempre; una columna por examen y el promedio solo si el
-    curso tiene exámenes."""
+    """«Tareas», «Equipo», «Proyecto» y «Calificación final» siempre; una columna por examen y el
+    promedio solo si el curso tiene exámenes (la final va después de ellos)."""
     return (
         ["No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto"]
         + [f"Examen - {e.nombre}" for e in examenes]
         + (["Promedio exámenes"] if examenes else [])
-        + ["Participaciones", "Última"]
+        + ["Calificación final", "Participaciones", "Última"]
         + (["Tipo"] if con_tipo else [])
     )
 
@@ -104,15 +105,27 @@ def _valores_resumen(
     n: int, f: ResumenAlumno, examenes: list[Examen], con_tipo: bool, ultima
 ) -> list:
     """Misma estructura que `_titulos_resumen`. Las tareas, el proyecto y los exámenes sin
-    calificación valen 0, el equipo va vacío si no tiene, y el promedio lo calculó el servicio
-    (esta capa no calcula nada)."""
+    calificación valen 0, el equipo va vacío si no tiene, y el promedio y la calificación final los
+    calculó el servicio (esta capa solo redondea la final a entero)."""
     return (
         [n, f.alumno.num_cuenta or "", f.alumno.nombre_completo, _numero(f.total), _numero(f.tareas),
          f.equipo if f.equipo is not None else "", _numero(f.proyecto)]
         + [_numero(f.calificaciones.get(e.id, 0.0)) for e in examenes]
         + ([_numero(f.prom_examenes)] if examenes else [])
-        + [f.n_participaciones, ultima]
+        + [redondear(f.final), f.n_participaciones, ultima]
         + ([_etiqueta_tipo(f.tipo)] if con_tipo else [])
+    )
+
+
+def _porcentaje(valor: float) -> str:
+    return f"{valor:.2f}".rstrip("0").rstrip(".")
+
+
+def _texto_ponderaciones(p: Ponderaciones) -> str:
+    return (
+        f"Ponderaciones: participaciones {_porcentaje(p.participaciones)} % · "
+        f"exámenes {_porcentaje(p.examenes)} % · tareas {_porcentaje(p.tareas)} % · "
+        f"proyecto {_porcentaje(p.proyecto)} %"
     )
 
 
@@ -154,6 +167,8 @@ def _escribir_excel(
         hoja["A3"] = curso.carrera
     hoja["A4"] = f"Exportado el {datetime.now():%d/%m/%Y %H:%M}"
     hoja["A4"].font = Font(italic=True, color="666666")
+    hoja["A5"] = _texto_ponderaciones(servicio.ponderaciones_de(curso.id))  # para que el archivo se entienda solo
+    hoja["A5"].font = Font(italic=True, color="666666")
 
     titulos = _titulos_resumen(examenes, con_tipo)
     col_ultima = titulos.index("Última") + 1

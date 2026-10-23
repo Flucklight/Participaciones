@@ -28,7 +28,7 @@ def _exportar(servicio, curso, ruta, **kw):
 
 def test_excel_trae_equipo_y_proyecto_despues_de_tareas(servicio, curso_con_proyecto, tmp_path):
     titulos, datos = _tabla_resumen(_hoja(_exportar(servicio, curso_con_proyecto, tmp_path / "p.xlsx"), "Resumen"))
-    assert titulos[:9] == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto", "Participaciones", "Última")
+    assert titulos[:10] == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto", "Calificación final", "Participaciones", "Última")
     por_cuenta = {f[1]: f for f in datos}
     assert (por_cuenta["100000001"][5], por_cuenta["100000001"][6]) == (1, 9.5)
     assert (por_cuenta["100000002"][5], por_cuenta["100000002"][6]) == (1, 9.5)
@@ -50,7 +50,7 @@ def test_equipo_y_proyecto_son_numeros_no_texto(servicio, curso_con_proyecto, tm
 def test_csv_trae_equipo_y_proyecto(servicio, curso_con_proyecto, tmp_path):
     ruta = _exportar(servicio, curso_con_proyecto, tmp_path / "p.csv")
     filas = list(csv.reader(ruta.read_text(encoding="utf-8-sig").splitlines()))
-    assert filas[0][3:8] == ["Décimas", "Tareas", "Equipo", "Proyecto", "Participaciones"]
+    assert filas[0][3:9] == ["Décimas", "Tareas", "Equipo", "Proyecto", "Calificación final", "Participaciones"]
     por_cuenta = {f[1]: f for f in filas[1:]}
     assert por_cuenta["100000001"][5:7] == ["1", "9.5"]
     assert por_cuenta["100000003"][5:7] == ["", "7"]

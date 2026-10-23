@@ -28,8 +28,8 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Dependencias: T1
 
 ### Checkpoint 1: Núcleo
-- [ ] Suite completa en verde (599 pruebas previas intactas).
-- [ ] Una base `.db` existente abre y conserva sus datos.
+- [x] Suite completa en verde (599 pruebas previas intactas + 136 nuevas).
+- [x] Una base `.db` existente abre y conserva sus datos.
 - [ ] Revisión con la persona antes de seguir a la UI.
 
 ## Fase 2: Pantalla Curso
@@ -66,7 +66,7 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Dependencias: T4
 
 ### Checkpoint 2: Pantalla Curso
-- [ ] Suite completa en verde.
+- [x] Suite completa en verde.
 - [ ] Flujo manual: crear un curso, capturar de todo, ver la final y cambiar ponderaciones; crear el primer examen y asignar su ponderación.
 - [ ] Revisión con la persona antes de seguir.
 
@@ -81,11 +81,11 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `ui_desktop/vista_historial.py`, `tests/test_ui_historial.py`
   - Dependencias: T2
 
-- [ ] **T7: Exportación** (S)
+- [x] **T7: Exportación** (S)
   - Descripción: columna «Calificación final» (entero) después de las de examen y «Promedio exámenes» y antes de «Participaciones», en `.xlsx` y `.csv`; en el `.xlsx`, línea con las ponderaciones usadas.
   - Aceptación:
-    - [ ] Numérica entera, en su lugar con y sin exámenes; refleja ponderaciones personalizadas; oyentes excluidos por defecto.
-    - [ ] El `.xlsx` indica «Ponderaciones: participaciones 10 % · exámenes 30 % · tareas 20 % · proyecto 40 %»; el `.csv` no la lleva.
+    - [x] Numérica entera, en su lugar con y sin exámenes; refleja ponderaciones personalizadas; oyentes excluidos por defecto.
+    - [x] El `.xlsx` indica «Ponderaciones: participaciones 10 % · exámenes 30 % · tareas 20 % · proyecto 40 %»; el `.csv` no la lleva.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_exportacion.py -q`
   - Archivos: `exporters/curso.py`, `tests/test_exportacion.py`
   - Dependencias: T2
