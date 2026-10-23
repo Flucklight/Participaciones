@@ -67,7 +67,7 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Dependencias: T3, T4
 
 ### Checkpoint 2: Modo evaluar
-- [ ] Suite completa en verde.
+- [x] Suite completa en verde.
 - [ ] Flujo manual: evaluar a un alumno y a un equipo, reemplazar con confirmación, deshacer, corregir uno, clic en fila, F2 en cuatro modos.
 - [ ] Revisión con la persona antes de seguir.
 
@@ -82,11 +82,11 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `ui_desktop/vista_curso.py`, `ui_desktop/vista_historial.py`, `tests/test_ui_curso.py`, `tests/test_ui_historial.py`
   - Dependencias: T2
 
-- [ ] **T7: Exportación y eliminar curso** (M)
+- [x] **T7: Exportación y eliminar curso** (M)
   - Descripción: columnas «Equipo» (número o vacío) y «Proyecto» (número) en `.xlsx` y `.csv`; el diálogo de eliminar curso cuenta las calificaciones de proyecto.
   - Aceptación:
-    - [ ] «Tareas» · «Equipo» · «Proyecto» · exámenes, en ese orden, con y sin exámenes; oyentes excluidos por defecto; curso sin datos exporta Proyecto 0 y Equipo vacío.
-    - [ ] Eliminar un curso informa cuántas calificaciones de proyecto se pierden y exige confirmar si solo hay proyectos.
+    - [x] «Tareas» · «Equipo» · «Proyecto» · exámenes, en ese orden, con y sin exámenes; oyentes excluidos por defecto; curso sin datos exporta Proyecto 0 y Equipo vacío.
+    - [x] Eliminar un curso informa cuántas calificaciones de proyecto se pierden y exige confirmar si solo hay proyectos.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_exportacion.py tests/test_ui_cursos.py -q`
   - Archivos: `exporters/curso.py`, `ui_desktop/dialogos.py`, `ui_desktop/vista_cursos.py`, `tests/test_exportacion.py`, `tests/test_ui_cursos.py`
   - Dependencias: T2

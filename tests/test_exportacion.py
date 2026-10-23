@@ -41,11 +41,11 @@ def test_excel_resumen_excluye_oyentes_por_defecto(servicio, curso_con_datos, tm
     assert hoja["A1"].value == "DISEÑO Y ANALISIS DE ALGORITMOS"
     assert "1510" in hoja["A2"].value and "2027-I" in hoja["A2"].value
     titulos, datos = _tabla_resumen(hoja)
-    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Participaciones", "Última")
+    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto", "Participaciones", "Última")
     assert [f[2] for f in datos] == sorted(f[2] for f in datos)  # orden alfabético
     assert all("OYENTE" not in f[2] for f in datos)
     abreu = next(f for f in datos if f[1] == "100000001")
-    assert abreu[3] == 0 and abreu[5] == 3  # 10, +5, -50 → piso de 0
+    assert abreu[3] == 0 and abreu[7] == 3  # 10, +5, -50 → piso de 0
     assert next(f for f in datos if f[1] == "100000002")[3] == 20
     assert isinstance(abreu[3], int)  # número real, no texto
 
@@ -66,7 +66,7 @@ def test_excel_cuenta_se_guarda_como_texto_y_fecha_como_fecha(servicio, curso_co
     hoja = _hoja(ruta, "Resumen")
     fila = next(r for r in hoja.iter_rows(min_row=7) if r[1].value == "100000001")
     assert isinstance(fila[1].value, str) and fila[1].number_format == "@"
-    assert fila[6].value.date() == date.today() and fila[6].number_format == "DD/MM/YYYY"
+    assert fila[8].value.date() == date.today() and fila[8].number_format == "DD/MM/YYYY"
 
 
 def test_excel_hoja_de_detalle_con_efecto_real_y_total(servicio, curso_con_datos, tmp_path):
@@ -93,7 +93,7 @@ def test_csv_resumen_con_acentos_y_bom(servicio, curso_con_datos, tmp_path):
     assert ruta.read_bytes().startswith(b"\xef\xbb\xbf")  # Excel detecta UTF-8
     with open(ruta, newline="", encoding="utf-8-sig") as f:
         filas = list(csv.reader(f))
-    assert filas[0] == ["No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Participaciones", "Última"]
+    assert filas[0] == ["No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto", "Participaciones", "Última"]
     assert len(filas) == 5
     assert ["ABREU SOLANO MARCOS"] == [f[2] for f in filas[1:] if f[1] == "100000001"]
     assert next(f for f in filas[1:] if f[1] == "100000002")[3] == "20"
@@ -156,15 +156,15 @@ def test_excel_una_columna_por_examen_y_el_promedio(servicio, curso_con_examenes
     ruta = tmp_path / "ex.xlsx"
     exportar_curso(servicio, curso_con_examenes.id, ruta)
     titulos, datos = _tabla_resumen(_hoja(ruta, "Resumen"))
-    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Examen - Parcial 1", "Examen - Final",
+    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto", "Examen - Parcial 1", "Examen - Final",
                        "Promedio exámenes", "Participaciones", "Última")
     abreu = next(f for f in datos if f[1] == "100000001")
-    assert (abreu[5], abreu[6], abreu[7]) == (42, 70, 56)
+    assert (abreu[7], abreu[8], abreu[9]) == (42, 70, 56)
     acosta = next(f for f in datos if f[1] == "100000002")
-    assert (acosta[5], acosta[6], acosta[7]) == (35.5, 0, 17.75)  # sin capturar vale 0 y cuenta
+    assert (acosta[7], acosta[8], acosta[9]) == (35.5, 0, 17.75)  # sin capturar vale 0 y cuenta
     garcia = next(f for f in datos if f[1] == "100000003")
-    assert (garcia[5], garcia[6], garcia[7]) == (0, 0, 0)
-    assert all(isinstance(v, (int, float)) for v in (abreu[5], abreu[6], abreu[7]))  # números, no texto
+    assert (garcia[7], garcia[8], garcia[9]) == (0, 0, 0)
+    assert all(isinstance(v, (int, float)) for v in (abreu[7], abreu[8], abreu[9]))  # números, no texto
 
 
 def test_excel_el_promedio_coincide_con_el_del_resumen(servicio, curso_con_examenes, tmp_path):
@@ -173,7 +173,7 @@ def test_excel_el_promedio_coincide_con_el_del_resumen(servicio, curso_con_exame
     _t, datos = _tabla_resumen(_hoja(ruta, "Resumen"))
     por_cuenta = {f.alumno.num_cuenta: f for f in servicio.resumen_curso(curso_con_examenes.id)}
     for fila in datos:
-        assert fila[7] == pytest.approx(por_cuenta[fila[1]].prom_examenes)
+        assert fila[9] == pytest.approx(por_cuenta[fila[1]].prom_examenes)
 
 
 def test_excel_con_examenes_la_fecha_y_la_cuenta_conservan_su_formato(servicio, curso_con_examenes, tmp_path):
@@ -182,7 +182,7 @@ def test_excel_con_examenes_la_fecha_y_la_cuenta_conservan_su_formato(servicio, 
     hoja = _hoja(ruta, "Resumen")
     fila = next(r for r in hoja.iter_rows(min_row=7) if r[1].value == "100000001")
     assert isinstance(fila[1].value, str) and fila[1].number_format == "@"
-    assert fila[9].value.date() == date.today() and fila[9].number_format == "DD/MM/YYYY"
+    assert fila[11].value.date() == date.today() and fila[11].number_format == "DD/MM/YYYY"
 
 
 def test_excel_oyentes_excluidos_por_defecto_e_incluidos_con_tipo(servicio, curso_con_examenes, tmp_path):
@@ -192,23 +192,23 @@ def test_excel_oyentes_excluidos_por_defecto_e_incluidos_con_tipo(servicio, curs
         _exportar(servicio, curso_con_examenes, tmp_path / "b.xlsx", incluir_oyentes=True), "Resumen"))
     assert titulos[-1] == "Tipo"
     oyente = next(f for f in datos if "OYENTE" in f[2])
-    assert (oyente[5], oyente[6], oyente[7], oyente[-1]) == (90, 0, 45, "Oyente")
+    assert (oyente[7], oyente[8], oyente[9], oyente[-1]) == (90, 0, 45, "Oyente")
 
 
 def test_csv_con_examenes(servicio, curso_con_examenes, tmp_path):
     ruta = _exportar(servicio, curso_con_examenes, tmp_path / "ex.csv")
     with open(ruta, newline="", encoding="utf-8-sig") as f:
         filas = list(csv.reader(f))
-    assert filas[0] == ["No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Examen - Parcial 1", "Examen - Final",
+    assert filas[0] == ["No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto", "Examen - Parcial 1", "Examen - Final",
                         "Promedio exámenes", "Participaciones", "Última"]
     abreu = next(f for f in filas[1:] if f[1] == "100000001")
-    assert abreu[5:8] == ["42", "70", "56"]
-    assert next(f for f in filas[1:] if f[1] == "100000002")[5:8] == ["35.5", "0", "17.75"]
+    assert abreu[7:10] == ["42", "70", "56"]
+    assert next(f for f in filas[1:] if f[1] == "100000002")[7:10] == ["35.5", "0", "17.75"]
 
 
 def test_curso_sin_examenes_exporta_las_mismas_columnas_de_siempre(servicio, curso_con_datos, tmp_path):
     titulos, _d = _tabla_resumen(_hoja(_exportar(servicio, curso_con_datos, tmp_path / "s.xlsx"), "Resumen"))
-    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Participaciones", "Última")
+    assert titulos == ("No.", "Cuenta", "Nombre", "Décimas", "Tareas", "Equipo", "Proyecto", "Participaciones", "Última")
 
 
 def _exportar(servicio, curso, ruta, **opciones):
@@ -229,7 +229,7 @@ def curso_con_tareas(servicio, curso_con_datos):
 
 def test_excel_columna_tareas_numerica_y_0_sin_captura(servicio, curso_con_tareas, tmp_path):
     titulos, datos = _tabla_resumen(_hoja(_exportar(servicio, curso_con_tareas, tmp_path / "t.xlsx"), "Resumen"))
-    assert titulos[3:6] == ("Décimas", "Tareas", "Participaciones")
+    assert titulos[3:8] == ("Décimas", "Tareas", "Equipo", "Proyecto", "Participaciones")
     por_cuenta = {f[1]: f for f in datos}
     assert por_cuenta["100000001"][4] == 84.5 and por_cuenta["100000002"][4] == 70
     assert por_cuenta["100000003"][4] == 0
@@ -242,9 +242,9 @@ def test_excel_tareas_queda_antes_de_los_examenes(servicio, curso_con_tareas, tm
     parcial = servicio.crear_examen(cid, "Parcial 1")
     servicio.registrar_calificacion(cid, parcial.id, "100000001", 42)
     titulos, datos = _tabla_resumen(_hoja(_exportar(servicio, curso_con_tareas, tmp_path / "t.xlsx"), "Resumen"))
-    assert titulos[3:7] == ("Décimas", "Tareas", "Examen - Parcial 1", "Promedio exámenes")
+    assert titulos[3:9] == ("Décimas", "Tareas", "Equipo", "Proyecto", "Examen - Parcial 1", "Promedio exámenes")
     abreu = next(f for f in datos if f[1] == "100000001")
-    assert (abreu[4], abreu[5], abreu[6]) == (84.5, 42, 42)
+    assert (abreu[4], abreu[7], abreu[8]) == (84.5, 42, 42)
 
 
 def test_excel_oyentes_con_tareas_solo_si_se_incluyen(servicio, curso_con_tareas, tmp_path):
@@ -260,7 +260,7 @@ def test_csv_con_tareas(servicio, curso_con_tareas, tmp_path):
     ruta = _exportar(servicio, curso_con_tareas, tmp_path / "t.csv")
     with open(ruta, newline="", encoding="utf-8-sig") as f:
         filas = list(csv.reader(f))
-    assert filas[0][3:6] == ["Décimas", "Tareas", "Participaciones"]
+    assert filas[0][3:8] == ["Décimas", "Tareas", "Equipo", "Proyecto", "Participaciones"]
     por_cuenta = {f[1]: f for f in filas[1:]}
     assert por_cuenta["100000001"][4] == "84.5" and por_cuenta["100000003"][4] == "0"
 
@@ -271,7 +271,7 @@ def test_las_tareas_no_cambian_el_promedio_de_examenes_exportado(servicio, curso
     servicio.registrar_calificacion(cid, parcial.id, "100000001", 42)
     _t, datos = _tabla_resumen(_hoja(_exportar(servicio, curso_con_tareas, tmp_path / "t.xlsx"), "Resumen"))
     abreu = next(f for f in datos if f[1] == "100000001")
-    assert abreu[6] == 42  # promedio de exámenes: solo el examen; las tareas (84.5) no entran
+    assert abreu[8] == 42  # promedio de exámenes: solo el examen; las tareas (84.5) no entran
 
 
 def test_curso_sin_ningun_dato_exporta_tareas_en_0(servicio, curso_importado, tmp_path):

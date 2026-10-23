@@ -125,9 +125,10 @@ class DialogoEliminarCurso(Dialogo):
     PALABRA = "ELIMINAR"
 
     def __init__(self, master, curso: Curso, alumnos: int, participaciones: int,
-                 examenes: int = 0, calificaciones: int = 0, tareas: int = 0) -> None:
+                 examenes: int = 0, calificaciones: int = 0, tareas: int = 0,
+                 proyecto: int = 0) -> None:
         super().__init__(master, "Eliminar curso")
-        self._exige_palabra = participaciones > 0 or calificaciones > 0 or tareas > 0
+        self._exige_palabra = participaciones > 0 or calificaciones > 0 or tareas > 0 or proyecto > 0
         ctk.CTkLabel(self.cuerpo, text="Eliminar curso", font=tema.fuente(18, "bold"),
                      text_color=tema.COLOR_PELIGRO).pack(anchor="w")
         ctk.CTkLabel(
@@ -140,6 +141,8 @@ class DialogoEliminarCurso(Dialogo):
                          f"{calificaciones} {'calificación' if calificaciones == 1 else 'calificaciones'}")
         if tareas:
             perdidas += f", {tareas} {'calificación' if tareas == 1 else 'calificaciones'} de tareas"
+        if proyecto:
+            perdidas += f", {proyecto} {'calificación' if proyecto == 1 else 'calificaciones'} de proyecto"
         self._detalle = ctk.CTkLabel(
             self.cuerpo, wraplength=390, justify="left", anchor="w",
             text=(f"Se eliminarán {perdidas} de este curso. Esta acción no se puede deshacer.\n\n"
