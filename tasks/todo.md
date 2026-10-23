@@ -4,13 +4,13 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 1: Lector y vista previa (sin UI)
 
-- [ ] **T1: Lector de xlsx/csv y modelos** (M)
+- [x] **T1: Lector de xlsx/csv y modelos** (M)
   - Descripción: `importers/calificaciones_plataforma.py` lee ambas disposiciones y devuelve un `ArchivoCalificaciones` (columnas numéricas con rótulo, filas de alumnos, grupo/ciclo si existen); agrega `conftest` con generadores ficticios.
   - Aceptación:
-    - [ ] Localiza alumnos por forma, sin posiciones fijas; ignora «Media de la clase», `Fecha`, `Puntos` y filas vacías.
-    - [ ] Lista las columnas numéricas con su rótulo (incluida la sin encabezado) y sugiere la de más a la derecha.
-    - [ ] `.csv` con coma o punto y coma, con y sin BOM; lee grupo y ciclo del xlsx.
-    - [ ] Archivo ajeno, inexistente o sin alumnos → `ErrorImportacion` claro; fórmula sin valor → «sin dato».
+    - [x] Localiza alumnos por forma, sin posiciones fijas; ignora «Media de la clase», `Fecha`, `Puntos` y filas vacías.
+    - [x] Lista las columnas numéricas con su rótulo (incluida la sin encabezado) y sugiere la de más a la derecha.
+    - [x] `.csv` con coma o punto y coma, con y sin BOM; lee grupo y ciclo del xlsx.
+    - [x] Archivo ajeno, inexistente o sin alumnos → `ErrorImportacion` claro; fórmula sin valor → «sin dato».
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_importar_tareas.py -q`
   - Archivos: `importers/calificaciones_plataforma.py`, `core/models.py`, `tests/conftest.py`, `tests/test_importar_tareas.py`
   - Dependencias: ninguna

@@ -204,3 +204,45 @@ class ResultadoImportacion:
     alumnos_creados: int
     inscripciones_nuevas: int
     vinculados: int
+
+
+@dataclass
+class ColumnaCalificaciones:
+    """Columna numérica de un archivo de calificaciones de otra plataforma."""
+
+    clave: str  # letra de la columna ("H"); identifica los valores de cada fila
+    rotulo: str = ""  # texto del encabezado ("" si la columna no lo tiene)
+
+    @property
+    def descripcion(self) -> str:
+        if self.rotulo:
+            return f"{self.rotulo} (columna {self.clave})"
+        return f"Columna {self.clave} (sin encabezado)"
+
+
+@dataclass
+class FilaCalificacion:
+    """Una fila de alumno del archivo. `valores` va por clave de columna: número, texto
+    (celda no numérica) o None (celda vacía o fórmula sin valor guardado)."""
+
+    apellidos: str
+    nombres: str
+    valores: dict[str, float | str | None] = field(default_factory=dict)
+    cuenta: str = ""  # solo si el archivo trae columna de cuenta
+
+    @property
+    def nombre_completo(self) -> str:
+        return f"{self.apellidos} {self.nombres}"
+
+
+@dataclass
+class ArchivoCalificaciones:
+    columnas: list[ColumnaCalificaciones]
+    filas: list[FilaCalificacion]
+    grupo: str = ""  # solo si el archivo lo trae (xlsx)
+    ciclo: str = ""
+
+    @property
+    def columna_sugerida(self) -> ColumnaCalificaciones:
+        """La numérica de más a la derecha (en las plataformas, el promedio)."""
+        return self.columnas[-1]

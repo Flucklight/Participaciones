@@ -67,7 +67,7 @@ Conclusión: el importador **no puede depender de posiciones fijas de fila**. De
 5. **Deshacer la importación:** tras aplicar, la franja ofrece «Deshacer importación», que restaura los valores anteriores (o elimina los que no existían). Solo mientras no se haga otra captura ni se salga de la pantalla.
 6. **Verificación de grupo (solo si el archivo la trae):** el xlsx trae `Grupo: <grupo> (<ciclo>)`; si no coincide con el curso abierto, la vista previa avisa y pide confirmar. El csv no trae datos del curso: no hay verificación y el resumen muestra siempre el nombre del curso al que se aplicará, para que se vea a cuál se importa.
 7. Los **oyentes** del curso también pueden recibir calificación por esta vía (se identifican igual por nombre).
-8. Una fila de alumno es la que tiene apellidos y nombres no vacíos, un correo con «@» en la tercera columna y al menos un valor numérico; «Media de la clase», `Fecha`, `Puntos` y filas vacías se ignoran. Una celda vacía en la columna elegida se informa («sin dato») y **no cambia** la calificación existente.
+8. Una fila de alumno es la que tiene apellidos y nombres no vacíos, un correo con «@» en la tercera columna (sin exigir que traiga números: un alumno sin calificaciones es «sin dato»); «Media de la clase», `Fecha`, `Puntos` y filas vacías se ignoran. Una celda vacía en la columna elegida se informa («sin dato») y **no cambia** la calificación existente.
 9. Valor negativo, no numérico o no finito en la columna elegida → fila omitida con el motivo (no detiene la importación).
 
 ## Vista previa (diálogo «Importar tareas»)
