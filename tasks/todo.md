@@ -4,24 +4,24 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ## Fase 1: Núcleo (sin UI)
 
-- [ ] **T1: Tablas, modelos y regla documentada** (S)
+- [x] **T1: Tablas, modelos y regla documentada** (S)
   - Descripción: crear `equipo` y `miembro_equipo`, las dataclasses `Equipo`/`ResultadoEquipo` y `ResumenAlumno.equipo`, y documentar R16 y el modelo en `CLAUDE.md` antes de seguir.
   - Aceptación:
-    - [ ] `conectar()` crea las tablas en una base nueva y en una existente sin perder datos.
-    - [ ] La PK impide que un alumno esté en dos equipos del mismo curso; borrar curso o alumno limpia en cascada.
-    - [ ] `CLAUDE.md` tiene el modelo y R16.
+    - [x] `conectar()` crea las tablas en una base nueva y en una existente sin perder datos.
+    - [x] La PK impide que un alumno esté en dos equipos del mismo curso; borrar curso o alumno limpia en cascada.
+    - [x] `CLAUDE.md` tiene el modelo y R16.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_equipos.py -q`
   - Archivos: `core/database.py`, `core/models.py`, `CLAUDE.md`, `tests/test_equipos.py`
   - Dependencias: ninguna
 
-- [ ] **T2: Servicio de equipos** (M)
+- [x] **T2: Servicio de equipos** (M)
   - Descripción: `formar_equipo`, `separar_de_equipo`, `deshacer_equipo`, `deshacer_separacion`, `equipos_del_curso`, `equipo_de`; `resumen_curso` trae `equipo`.
   - Aceptación:
-    - [ ] Forma con 1 o más alumnos; rechaza lista vacía y alumnos no inscritos.
-    - [ ] Numeración 1, 2, 3 por curso, independiente entre cursos; **no se reutiliza** tras separar a todos.
-    - [ ] Si alguien ya tiene equipo: no crea ni mueve nada y dice quién y en cuál.
-    - [ ] Separar uno o varios; separar a quien no tiene equipo no falla; deshacer revierte ambas operaciones.
-    - [ ] Décimas, exámenes y tareas no cambian.
+    - [x] Forma con 1 o más alumnos; rechaza lista vacía y alumnos no inscritos.
+    - [x] Numeración 1, 2, 3 por curso, independiente entre cursos; **no se reutiliza** tras separar a todos.
+    - [x] Si alguien ya tiene equipo: no crea ni mueve nada y dice quién y en cuál.
+    - [x] Separar uno o varios; separar a quien no tiene equipo no falla; deshacer revierte ambas operaciones.
+    - [x] Décimas, exámenes y tareas no cambian.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_equipos.py tests/test_cursos.py -q`
   - Archivos: `core/services.py`, `core/repository.py`, `core/models.py`, `tests/test_equipos.py`
   - Dependencias: T1

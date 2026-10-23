@@ -237,6 +237,7 @@ class Repositorio:
         examenes = [e.id for e in self.listar_examenes(curso_id)]
         puntos = self.puntos_por_alumno(curso_id)
         tareas = self.tareas_por_alumno(curso_id)
+        equipos = self.equipos_por_alumno(curso_id)
         filas = self._db.execute(
             "SELECT a.id, a.num_cuenta, a.nombre_completo, i.tipo,"
             "       COUNT(p.id) AS n, MAX(p.fecha) AS ultima"
@@ -260,6 +261,7 @@ class Repositorio:
                 ),
                 calificaciones=dict(puntos.get(f["id"], {})),
                 tareas=tareas.get(f["id"], 0.0),
+                equipo=equipos.get(f["id"]),
             )
             for f in filas
         ]
@@ -429,6 +431,53 @@ class Repositorio:
             "SELECT alumno_id, puntos FROM calificacion_tareas WHERE curso_id = ?", (curso_id,)
         )
         return {f["alumno_id"]: f["puntos"] for f in filas}
+
+    # ---- equipos de proyecto ----------------------------------------------
+    def siguiente_numero_equipo(self, curso_id: int) -> int:
+        """Máximo histórico + 1: los equipos vacíos no se borran, así que un número no se reutiliza."""
+        return self._db.execute(
+            "SELECT COALESCE(MAX(numero), 0) + 1 FROM equipo WHERE curso_id = ?", (curso_id,)
+        ).fetchone()[0]
+
+    def crear_equipo(self, curso_id: int, numero: int) -> None:
+        self._db.execute("INSERT INTO equipo (curso_id, numero) VALUES (?, ?)", (curso_id, numero))
+
+    def agregar_miembro_equipo(self, curso_id: int, alumno_id: int, numero: int) -> None:
+        self._db.execute(
+            "INSERT INTO miembro_equipo (curso_id, alumno_id, numero) VALUES (?, ?, ?)",
+            (curso_id, alumno_id, numero),
+        )
+
+    def quitar_miembro_equipo(self, curso_id: int, alumno_id: int) -> None:
+        self._db.execute(
+            "DELETE FROM miembro_equipo WHERE curso_id = ? AND alumno_id = ?", (curso_id, alumno_id)
+        )
+
+    def equipo_de(self, curso_id: int, alumno_id: int) -> int | None:
+        fila = self._db.execute(
+            "SELECT numero FROM miembro_equipo WHERE curso_id = ? AND alumno_id = ?",
+            (curso_id, alumno_id),
+        ).fetchone()
+        return fila["numero"] if fila else None
+
+    def equipos_por_alumno(self, curso_id: int) -> dict[int, int]:
+        """{alumno_id: número de equipo} de los alumnos del curso que tienen equipo."""
+        filas = self._db.execute(
+            "SELECT alumno_id, numero FROM miembro_equipo WHERE curso_id = ?", (curso_id,)
+        )
+        return {f["alumno_id"]: f["numero"] for f in filas}
+
+    def miembros_por_equipo(self, curso_id: int) -> dict[int, list[Alumno]]:
+        """{número: miembros por nombre} solo de los equipos que tienen al menos un miembro."""
+        filas = self._db.execute(
+            "SELECT m.numero, a.* FROM miembro_equipo m JOIN alumno a ON a.id = m.alumno_id"
+            " WHERE m.curso_id = ? ORDER BY m.numero, a.nombre_norm",
+            (curso_id,),
+        )
+        equipos: dict[int, list[Alumno]] = {}
+        for f in filas:
+            equipos.setdefault(f["numero"], []).append(_alumno(f))
+        return equipos
 
     def contar_tareas_curso(self, curso_id: int) -> int:
         return self._db.execute(

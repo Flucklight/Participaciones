@@ -32,6 +32,8 @@ participacion(id, curso_id, alumno_id, decimas, fecha, nota)
 examen(id, curso_id, nombre, nombre_norm)  -- único por curso+nombre_norm; sin puntaje máximo
 calificacion(examen_id, alumno_id, puntos, fecha)  -- una por alumno y examen (PK compuesta)
 calificacion_tareas(curso_id, alumno_id, puntos, fecha)  -- una por alumno y curso (PK compuesta); promedio ya calculado fuera
+equipo(curso_id, numero)  -- equipos de proyecto; no se borran al quedar vacíos (así el número no se reutiliza)
+miembro_equipo(curso_id, alumno_id, numero)  -- un alumno en un solo equipo por curso (PK compuesta)
 ```
 
 ## Reglas de negocio
@@ -90,6 +92,11 @@ calificacion_tareas(curso_id, alumno_id, puntos, fecha)  -- una por alumno y cur
    - Identificación **por nombre** (normalizado, R3), o por número de cuenta si el archivo trae una columna «Cuenta» (tiene prioridad; el nombre queda de respaldo): coincidencia exacta única → se aplica; mismas palabras en otro orden o un nombre contenido en el otro → **dudosa**, solo se aplica si la persona la confirma; varias o ninguna coincidencia, o nombre repetido en el archivo → se omite. **Nunca se crean alumnos** ni se tocan los que el archivo no menciona.
    - Valor vacío, no numérico, negativo o no finito → fila omitida con su motivo; una celda vacía no cambia la calificación existente. Si el archivo trae grupo y ciclo y no coinciden con el curso, la vista previa avisa.
    - La importación completa se puede **deshacer**.
+
+16. **Equipos de proyecto** (independientes de décimas, exámenes y tareas; no tocan ninguna calificación):
+   - Un equipo se forma con **1 o más alumnos** del curso (también oyentes). El número es **incremental por curso** (máximo histórico + 1) y **nunca se reutiliza**, aunque el equipo se quede sin miembros; un equipo vacío no aparece en pantalla.
+   - Un alumno está en **un solo equipo** por curso. Si entre los elegidos hay quien ya tiene equipo, **no se crea ni se mueve nada** y se informa quién y en cuál; hay que separarlo antes. Nunca se mueve a nadie sin que lo pida.
+   - **Separar** saca a uno o varios alumnos de su equipo (quien no tiene equipo se ignora). Formar y separar se pueden deshacer. Eliminar un curso borra sus equipos.
 
 ## Interfaz
 - **Paleta** (`ui_desktop/tema.py`, único lugar con colores; las vistas usan sus nombres, nunca hex ni `gray`): azul de la FES Aragón = marca y participaciones; **índigo = modo Examen** (vecino del azul, se distingue sin chocar); **verde azulado = modo Tareas**; verde = éxito, rojo = peligro, ámbar = avisos. Cada color es un par (claro, oscuro); los rellenos llevan texto blanco, el texto de enlaces usa `COLOR_ACENTO_TEXTO`.

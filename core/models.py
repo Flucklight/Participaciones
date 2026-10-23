@@ -118,6 +118,8 @@ class ResumenAlumno:
     calificaciones: dict[int, float] = field(default_factory=dict)
     # Calificación de tareas (promedio ya calculado fuera); 0 si no se ha capturado.
     tareas: float = 0.0
+    # Número de equipo de proyecto (None si no tiene).
+    equipo: int | None = None
 
 
 class EstadoRegistro(str, Enum):
@@ -152,6 +154,29 @@ class ResultadoCalificacion:
     calificacion_anterior: Calificacion | None = None
     promedio: float | None = None
     candidatos: list[Alumno] = field(default_factory=list)
+
+
+class EstadoEquipo(str, Enum):
+    FORMADO = "formado"
+    YA_TIENEN_EQUIPO = "ya_tienen_equipo"  # no se creó nada: alguien ya está en otro equipo
+
+
+@dataclass
+class Equipo:
+    """Equipo de proyecto de un curso, con los miembros que tiene ahora (puede ser uno solo)."""
+
+    curso_id: int
+    numero: int
+    miembros: list[Alumno] = field(default_factory=list)
+
+
+@dataclass
+class ResultadoEquipo:
+    estado: EstadoEquipo
+    numero: int | None = None  # el equipo formado
+    miembros: list[Alumno] = field(default_factory=list)
+    # Con YA_TIENEN_EQUIPO: quién ya tenía equipo y cuál (no se movió ni se creó nada).
+    con_equipo: list[tuple[Alumno, int]] = field(default_factory=list)
 
 
 @dataclass

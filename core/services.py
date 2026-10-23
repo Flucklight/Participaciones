@@ -16,6 +16,8 @@ from .models import (
     CalificacionTareas,
     CoincidenciaOyente,
     Curso,
+    Equipo,
+    EstadoEquipo,
     EstadoLinea,
     EstadoRegistro,
     Examen,
@@ -25,6 +27,7 @@ from .models import (
     ListaInscripcion,
     Participacion,
     ResultadoCalificacion,
+    ResultadoEquipo,
     ResultadoImportacion,
     ResultadoImportacionTareas,
     ResultadoRegistro,
@@ -645,6 +648,70 @@ class ServicioParticipaciones:
         oyente.num_cuenta = num_cuenta
         self._repo.actualizar_alumno(oyente)
         return oyente
+
+    # ================= equipos de proyecto =================
+    def formar_equipo(self, curso_id: int, alumno_ids: list[int]) -> ResultadoEquipo:
+        """Forma un equipo nuevo (desde 1 alumno) con el siguiente número del curso.
+
+        Si alguno ya tiene equipo no crea nada ni mueve a nadie: informa quién y en cuál.
+        """
+        self._curso_o_error(curso_id)
+        ids = list(dict.fromkeys(alumno_ids))
+        if not ids:
+            raise ErrorDominio("Elige al menos un alumno para formar el equipo.")
+        alumnos = []
+        for alumno_id in ids:
+            alumno = self._alumno_o_error(alumno_id)
+            if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
+                raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
+            alumnos.append(alumno)
+        con_equipo = [
+            (a, numero) for a in alumnos if (numero := self._repo.equipo_de(curso_id, a.id)) is not None
+        ]
+        if con_equipo:
+            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo)
+        with self._repo.transaccion():
+            numero = self._repo.siguiente_numero_equipo(curso_id)
+            self._repo.crear_equipo(curso_id, numero)
+            for alumno in alumnos:
+                self._repo.agregar_miembro_equipo(curso_id, alumno.id, numero)
+        return ResultadoEquipo(EstadoEquipo.FORMADO, numero, alumnos)
+
+    def separar_de_equipo(self, curso_id: int, alumno_ids: list[int]) -> dict[int, int]:
+        """Saca a los alumnos de su equipo. Devuelve {alumno_id: equipo que tenía} de quienes
+        sí estaban en uno (lo que necesita `deshacer_separacion`); los demás se ignoran."""
+        self._curso_o_error(curso_id)
+        separados: dict[int, int] = {}
+        with self._repo.transaccion():
+            for alumno_id in dict.fromkeys(alumno_ids):
+                numero = self._repo.equipo_de(curso_id, alumno_id)
+                if numero is not None:
+                    self._repo.quitar_miembro_equipo(curso_id, alumno_id)
+                    separados[alumno_id] = numero
+        return separados
+
+    def deshacer_separacion(self, curso_id: int, separados: dict[int, int]) -> None:
+        """Devuelve a cada alumno a su equipo (salvo que ya esté en otro)."""
+        with self._repo.transaccion():
+            for alumno_id, numero in separados.items():
+                if self._repo.equipo_de(curso_id, alumno_id) is None:
+                    self._repo.agregar_miembro_equipo(curso_id, alumno_id, numero)
+
+    def deshacer_equipo(self, curso_id: int, numero: int) -> None:
+        """Deshace la formación de un equipo: libera a sus miembros. El número queda usado."""
+        with self._repo.transaccion():
+            for alumno in self._repo.miembros_por_equipo(curso_id).get(numero, []):
+                self._repo.quitar_miembro_equipo(curso_id, alumno.id)
+
+    def equipos_del_curso(self, curso_id: int) -> list[Equipo]:
+        """Los equipos con al menos un miembro, por número."""
+        return [
+            Equipo(curso_id, numero, miembros)
+            for numero, miembros in sorted(self._repo.miembros_por_equipo(curso_id).items())
+        ]
+
+    def equipo_de(self, curso_id: int, alumno_id: int) -> int | None:
+        return self._repo.equipo_de(curso_id, alumno_id)
 
     # ================= importar calificaciones de tareas =================
     def previsualizar_importacion_tareas(
