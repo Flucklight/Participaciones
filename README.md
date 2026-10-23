@@ -43,7 +43,13 @@ miembro_equipo(curso_id, alumno_id, numero)             -- un alumno en un solo 
 
 ### Principal
 Panel lateral izquierdo para navegar. Las vistas se muestran en el área central.
-Secciones: **Cursos** y **Configuración** (respaldos y carpeta de datos).
+Secciones: **Cursos** y **Configuración** (respaldos, carpeta de datos y exportar/importar la base).
+
+### Pasar los datos de una computadora a otra
+En **Configuración**: en la computadora de origen pulsa **Exportar base…** y guarda el `.db`; llévalo a la otra (USB, OneDrive, correo) y ahí pulsa **Importar base…**.
+- **Fusionar** suma lo que falta sin borrar nada de lo que ya hay. Antes de guardar ves qué se agrega y cada diferencia (calificaciones o equipos distintos, participaciones repetidas, personas que podrían ser la misma) para elegir; por omisión se conserva lo de la computadora donde importas.
+- **Reemplazar todo** deja la base igual a la del archivo.
+- En ambos casos se crea un respaldo antes y **Deshacer importación** lo restaura.
 
 ### Cursos
 - Arriba: **Crear**, **Importar lista** y **Eliminar**.
@@ -111,7 +117,7 @@ powershell -ExecutionPolicy Bypass -File scripts/construir_exe.ps1
 
 Crea `dist/Participaciones/Participaciones.exe` (≈46 MB, tarda ~30 s). Para usarla en otra computadora copia **la carpeta completa** `dist/Participaciones/`; el `.exe` solo no funciona. No requiere instalar Python.
 
-- **Datos del ejecutable:** se guardan en `%LOCALAPPDATA%\Participaciones\data` (base de datos y respaldos), fuera de la carpeta de la app: reconstruir, mover o borrar `dist/` nunca toca tus datos. La versión de desarrollo (`python main.py`) usa `data/` del proyecto, así que **son dos bases independientes**. Para pasar datos de una a otra, copia `participaciones.db` entre ambas carpetas con la app cerrada. La ruta exacta aparece en **Configuración**.
+- **Datos del ejecutable:** se guardan en `%LOCALAPPDATA%\Participaciones\data` (base de datos y respaldos), fuera de la carpeta de la app: reconstruir, mover o borrar `dist/` nunca toca tus datos. La versión de desarrollo (`python main.py`) usa `data/` del proyecto, así que **son dos bases independientes**. Para pasar datos de una a otra usa **Configuración → Exportar base… / Importar base…**. La ruta exacta aparece en **Configuración**.
 - **Ícono:** `assets/icon/FES ARAGON.png` es la fuente; `tools/crear_icono.py` genera `assets/icon/app.ico` (el script de construcción lo ejecuta solo).
 - **Receta:** `participaciones.spec`. Dependencias solo para compilar: `requirements-build.txt`.
 - Si el proyecto está en OneDrive, el script borra `dist/` y manda los temporales fuera de OneDrive para evitar errores de "Acceso denegado" por la sincronización.
@@ -148,6 +154,7 @@ Participaciones/
    - ✅ Principal (panel lateral), Cursos y Configuración
    - ✅ Curso (tabla + registro rápido)
    - ✅ Historial de un alumno (doble clic en una fila del curso)
+5b. ✅ Exportar/importar la base entre máquinas (Configuración).
 5. ✅ Exportar a Excel/CSV (botón «Exportar» en la pantalla Curso) y respaldos (automático al cerrar y manual desde Configuración).
 
 ## Mejoras futuras
@@ -156,3 +163,4 @@ Participaciones/
 - Sección global **Alumnos** (directorio).
 - Importar el Excel anterior (`Participaciones.xlsm`), cruzando por nombre.
 - Interfaz web (`ui_web/`) reutilizando `core/`.
+- Identificador por evento en las participaciones para fusionar bases sin ambigüedad en los duplicados.

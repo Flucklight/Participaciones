@@ -52,7 +52,7 @@ Prueba general: `python -m pytest -q`. Cada tarea termina con la suite completa 
 
 ## Fase 3: Cierre
 
-- [ ] **T9 · Documentación y versión 1.6.1** (S) · depende de T8
+- [x] **T9 · Documentación y versión 1.6.1** (S) · depende de T8
   - Aceptación: R19 agregada a `CLAUDE.md` (y la sección de Configuración en Interfaz), `README.md` coherente, `core/version.py` = `1.6.1`; «trabajo a futuro» anotado: identificador por evento en `participacion`.
   - Verifica: `python -m pytest -q`; `powershell scripts/construir_exe.ps1` genera el ejecutable
   - Archivos: `CLAUDE.md`, `README.md`, `core/version.py`
