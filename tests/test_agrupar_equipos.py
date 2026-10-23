@@ -44,3 +44,24 @@ def test_titulo_en_singular_y_plural():
 
 def test_los_encabezados_se_distinguen_de_los_alumnos():
     assert es_encabezado(iid_encabezado(3)) and not es_encabezado("42")
+
+
+def test_el_titulo_incluye_nombre_y_proyecto_si_los_hay():
+    filas = [fila(1, 1), fila(2, 1), fila(3, 2), fila(4, 3)]
+    g = agrupar_por_equipo(filas, {1: ("Los Cuervos", "Sistema de riego"), 2: ("Solo nombre", ""), 3: ("", "Solo proyecto")})
+    assert [x.titulo for x in g] == [
+        "Equipo 1 · 2 alumnos · Los Cuervos · Sistema de riego",
+        "Equipo 2 · 1 alumno · Solo nombre",
+        "Equipo 3 · 1 alumno · Solo proyecto",
+    ]
+
+
+def test_sin_datos_el_titulo_es_el_de_siempre():
+    g = agrupar_por_equipo([fila(1, 1)], {})
+    assert g[0].titulo == "Equipo 1 · 1 alumno"
+
+
+def test_el_numero_se_recupera_del_iid():
+    from ui_desktop.agrupar import numero_de_encabezado
+
+    assert numero_de_encabezado(iid_encabezado(12)) == 12

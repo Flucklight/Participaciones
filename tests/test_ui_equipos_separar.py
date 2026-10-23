@@ -8,6 +8,7 @@ from tests.conftest import hay_pantalla
 from tests.test_ui_curso import _fila, _texto_franja, curso_ui  # noqa: F401  (fixture)
 from tests.test_ui_equipos import (
     _activar_formar,
+    _crear,
     _boton_deshacer_visible,
     _en_proyecto,
     _etiquetas,
@@ -119,7 +120,7 @@ def test_separar_a_todos_hace_desaparecer_el_equipo_y_su_numero_no_se_reutiliza(
     v._menu_equipos(_evento(curso_ui, _iid(v, "100000001"))).invoke(0)
     assert not any(i.startswith("equipo_") for i in v._tabla.get_children())
     _seleccionar(curso_ui, "100000002")
-    v.crear_equipo()
+    _crear(curso_ui)
     assert "Equipo 2 formado" in _texto_franja(v)
 
 

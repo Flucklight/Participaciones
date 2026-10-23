@@ -234,3 +234,57 @@ class DialogoExamen(Dialogo):
             self._error.configure(text=str(error))
             return
         self.cerrar(examen)
+
+
+class DialogoEquipo(Dialogo):
+    """Nombre del equipo y título de su proyecto (los dos opcionales).
+
+    Sirve para formar un equipo y para editar uno existente. `guardar(nombre, proyecto)` puede
+    lanzar ErrorDominio (se muestra dentro del diálogo) y lo que devuelva es el resultado.
+    """
+
+    def __init__(
+        self,
+        master,
+        titulo: str,
+        guardar: Callable[[str, str], object],
+        nombre: str = "",
+        proyecto: str = "",
+        texto_ok: str = "Guardar",
+    ) -> None:
+        super().__init__(master, titulo, ancho=480)
+        self._guardar = guardar
+        ctk.CTkLabel(self.cuerpo, text=titulo, font=tema.fuente(18, "bold")).pack(anchor="w", pady=(0, 8))
+        self._nombre = self._campo("Nombre del equipo (opcional)", "Ej. Los Cuervos", nombre)
+        self._proyecto = self._campo("Título del proyecto (opcional)", "Ej. Sistema de riego automatizado", proyecto)
+        ctk.CTkLabel(
+            self.cuerpo, anchor="w", justify="left", wraplength=430, font=tema.fuente(12),
+            text_color=tema.COLOR_TEXTO_SUAVE,
+            text="Puedes dejarlos vacíos y completarlos después con doble clic en el equipo.",
+        ).pack(fill="x", pady=(10, 0))
+        self._error = ctk.CTkLabel(self.cuerpo, text="", text_color=tema.COLOR_PELIGRO,
+                                   wraplength=430, justify="left", anchor="w")
+        self._error.pack(fill="x", pady=(8, 0))
+        self.botones(texto_ok, self._aceptar)
+
+    def _campo(self, etiqueta: str, ejemplo: str, valor: str) -> ctk.CTkEntry:
+        ctk.CTkLabel(self.cuerpo, text=etiqueta, anchor="w", font=tema.fuente(12),
+                     text_color=tema.COLOR_TEXTO_SUAVE).pack(fill="x", pady=(6, 2))
+        entrada = ctk.CTkEntry(self.cuerpo, height=34, placeholder_text=ejemplo)
+        entrada.pack(fill="x")
+        entrada.bind("<Return>", lambda _e: self._aceptar())
+        if valor:
+            entrada.insert(0, valor)
+        return entrada
+
+    def al_mostrar(self) -> None:
+        self._nombre.focus_set()
+        self._nombre.select_range(0, "end")
+
+    def _aceptar(self) -> None:
+        try:
+            resultado = self._guardar(self._nombre.get(), self._proyecto.get())
+        except ErrorDominio as error:
+            self._error.configure(text=str(error))
+            return
+        self.cerrar(resultado)

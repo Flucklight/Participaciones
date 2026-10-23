@@ -8,6 +8,7 @@ from tests.conftest import hay_pantalla
 from tests.test_ui_curso import _fila, _texto_franja, curso_ui  # noqa: F401  (fixture)
 from tests.test_ui_equipos import (
     _activar_formar,
+    _crear,
     _boton_deshacer_visible,
     _en_proyecto,
     _etiquetas,
@@ -63,7 +64,7 @@ def test_se_puede_formar_el_equipo_solo_con_clics(curso_ui):
     v = _activar_formar(curso_ui)
     for cuenta in ("100000001", "100000002", "100000004"):
         _pulsar(curso_ui, cuenta)
-    v.crear_equipo()
+    _crear(curso_ui)
     assert [e.numero for e in curso_ui.srv.equipos_del_curso(curso_ui.curso.id)] == [1]
     assert len(curso_ui.srv.equipos_del_curso(curso_ui.curso.id)[0].miembros) == 3
 

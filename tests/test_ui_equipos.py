@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.conftest import hay_pantalla
+from tests.conftest import buscar_dialogo, hay_pantalla
 from tests.test_ui_curso import _fila, _texto_franja, curso_ui  # noqa: F401  (fixture)
 from ui_desktop import tema
 
@@ -26,6 +26,29 @@ def _en_proyecto(ui):
     v._cambiar_modo("Proyecto")
     ui.app.update()
     return v
+
+
+def _crear(ui, nombre="", proyecto="", aceptar=True):
+    """Pulsa «Crear equipo»: se abre el diálogo de datos del equipo, se llena y se acepta (o se cancela).
+
+    Solo para los casos en que el diálogo sí se abre: un callback pendiente que no encuentra su
+    diálogo no hace nada, pero uno que llegara tarde podría tocar el de otra prueba.
+    """
+    def accion():
+        d = buscar_dialogo(ui.app)
+        if d is None:
+            return
+        try:
+            d._nombre.insert(0, nombre)
+            d._proyecto.insert(0, proyecto)
+            if aceptar:
+                d._aceptar()
+        finally:
+            if d.winfo_exists():
+                d.cancelar()
+
+    ui.app.after(300, accion)
+    ui.vista.crear_equipo()
 
 
 def _filas(v):
@@ -185,23 +208,51 @@ def test_ocultar_oyentes_quita_su_equipo_y_el_conteo_solo_cuenta_lo_visible(curs
 
 
 # ---------------- los encabezados no son alumnos ----------------
-def test_un_clic_en_un_encabezado_no_carga_a_nadie(curso_ui):
+def test_un_clic_en_un_encabezado_evaluando_manda_el_equipo_al_registro(curso_ui):
     _formar(curso_ui, "100000001")
     v = _en_proyecto(curso_ui)
-    antes = v._elegido
     _clic(curso_ui, "equipo_1")
-    assert v._elegido is antes and v._entrada_alumno.get() == ""
+    assert v._entrada_alumno.get() == "equipo 1" and v._elegido is None
+    assert v._tabla.selection() == ()  # el encabezado no queda seleccionado
 
 
-def test_doble_clic_en_un_encabezado_no_abre_historial(curso_ui, monkeypatch):
+def test_el_clic_en_el_encabezado_deja_el_foco_en_la_calificacion(curso_ui):
+    _formar(curso_ui, "100000001")
+    v = _en_proyecto(curso_ui)
+    _clic(curso_ui, "equipo_1")
+    assert v.focus_get() is v._entrada_decimas._entry
+
+
+def test_formando_un_clic_en_un_encabezado_no_hace_nada(curso_ui):
+    _formar(curso_ui, "100000001")
+    v = _activar_formar(curso_ui)
+    _clic(curso_ui, "equipo_1")
+    assert v._entrada_alumno.get() == "" and v._tabla.selection() == ()
+
+
+def test_fuera_de_proyecto_el_encabezado_no_existe_asi_que_no_hay_clic_que_manejar(curso_ui):
+    v = curso_ui.vista
+    assert not any(i.startswith("equipo_") for i in v._tabla.get_children())
+
+
+def test_doble_clic_en_un_encabezado_no_abre_historial_sino_edita_el_equipo(curso_ui, monkeypatch):
     _formar(curso_ui, "100000001")
     v = _en_proyecto(curso_ui)
     abierto = []
     monkeypatch.setattr(curso_ui.app, "abrir_historial", lambda *a: abierto.append(a))
+    vistos = []
+
+    def mirar():
+        d = buscar_dialogo(curso_ui.app)
+        vistos.append(d is not None)
+        if d is not None:
+            d.cancelar()
+
+    curso_ui.app.after(300, mirar)
     curso_ui.app.update()
     x, y, _w, h = v._tabla.bbox("equipo_1")
     v._al_doble_clic(SimpleNamespace(x=x + 20, y=y + h // 2))
-    assert abierto == []
+    assert abierto == [] and vistos == [True]
 
 
 def test_un_encabezado_no_se_puede_seleccionar(curso_ui):
@@ -298,7 +349,7 @@ def test_los_encabezados_no_cuentan_en_la_seleccion(curso_ui):
 def test_crear_equipo_asigna_el_numero_reagrupa_y_resalta(curso_ui):
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000003", "100000001")
-    v.crear_equipo()
+    _crear(curso_ui)
     assert "Equipo 1 formado con 2 alumnos" in _texto_franja(v)
     assert [n for _, n in _filas(v)][:3] == ["Equipo 1 · 2 alumnos", "ABREU SOLANO MARCOS", "GARCIA LOPEZ ANA"]
     assert v._tabla.selection() == () and v._formando  # sigue formando
@@ -306,7 +357,7 @@ def test_crear_equipo_asigna_el_numero_reagrupa_y_resalta(curso_ui):
         assert "reciente" in _etiquetas(v, str(_fila(v, cuenta).alumno.id))
     assert _boton_deshacer_visible(v)
     _seleccionar(curso_ui, "100000002")
-    v.crear_equipo()
+    _crear(curso_ui)
     assert "Equipo 2 formado con 1 alumno" in _texto_franja(v)
 
 
@@ -320,7 +371,7 @@ def test_incluir_a_alguien_con_equipo_se_rechaza_y_dice_quien(curso_ui):
     _formar(curso_ui, "100000001")
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000002")
-    v.crear_equipo()
+    v.crear_equipo()  # se avisa antes de abrir el diálogo
     texto = _texto_franja(v)
     assert "ABREU SOLANO MARCOS" in texto and "equipo 1" in texto and "Sácalos" in texto
     assert [e.numero for e in curso_ui.srv.equipos_del_curso(curso_ui.curso.id)] == [1]
@@ -331,14 +382,14 @@ def test_incluir_a_alguien_con_equipo_se_rechaza_y_dice_quien(curso_ui):
 def test_deshacer_la_formacion_libera_a_los_miembros(curso_ui):
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000002")
-    v.crear_equipo()
+    _crear(curso_ui)
     v.deshacer()
     assert curso_ui.srv.equipos_del_curso(curso_ui.curso.id) == []
     assert "Se deshizo el equipo 1" in _texto_franja(v)
     assert not any(i.startswith("equipo_") for i in v._tabla.get_children())
     v.deshacer()  # una sola vez: no pasa nada más
     _seleccionar(curso_ui, "100000001")
-    v.crear_equipo()
+    _crear(curso_ui)
     assert "Equipo 2 formado" in _texto_franja(v)  # el número del equipo deshecho no se reutiliza
 
 
@@ -358,7 +409,7 @@ def test_desactivar_o_cambiar_de_modo_limpia_la_seleccion(curso_ui):
 def test_otra_captura_reemplaza_lo_deshacible(curso_ui):
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001")
-    v.crear_equipo()
+    _crear(curso_ui)
     v._selector_modo.set("Participación")
     v._cambiar_modo("Participación")
     v._entrada_alumno.insert(0, "100000002")
@@ -373,5 +424,5 @@ def test_formar_equipos_no_altera_las_calificaciones(curso_ui):
     curso_ui.srv.registrar_tareas(curso_ui.curso.id, "100000001", 85)
     v = _activar_formar(curso_ui)
     _seleccionar(curso_ui, "100000001", "100000002")
-    v.crear_equipo()
+    _crear(curso_ui)
     assert {r.alumno.num_cuenta: r.tareas for r in curso_ui.srv.resumen_curso(curso_ui.curso.id)}["100000001"] == 85

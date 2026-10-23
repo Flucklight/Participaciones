@@ -771,12 +771,30 @@ class ServicioParticipaciones:
             self._repo.eliminar_proyecto(curso_id, alumno_id)
 
     # ================= equipos de proyecto =================
-    def formar_equipo(self, curso_id: int, alumno_ids: list[int]) -> ResultadoEquipo:
-        """Forma un equipo nuevo (desde 1 alumno) con el siguiente número del curso.
+    MAX_NOMBRE_EQUIPO = 60
+    MAX_PROYECTO_EQUIPO = 120
+
+    @classmethod
+    def _datos_equipo(cls, nombre: str, proyecto: str) -> tuple[str, str]:
+        """Limpia espacios y valida el largo del nombre del equipo y del título del proyecto."""
+        nombre = " ".join(nombre.split())
+        proyecto = " ".join(proyecto.split())
+        if len(nombre) > cls.MAX_NOMBRE_EQUIPO:
+            raise ErrorDominio(f"El nombre del equipo no puede pasar de {cls.MAX_NOMBRE_EQUIPO} caracteres.")
+        if len(proyecto) > cls.MAX_PROYECTO_EQUIPO:
+            raise ErrorDominio(f"El título del proyecto no puede pasar de {cls.MAX_PROYECTO_EQUIPO} caracteres.")
+        return nombre, proyecto
+
+    def formar_equipo(
+        self, curso_id: int, alumno_ids: list[int], nombre: str = "", proyecto: str = ""
+    ) -> ResultadoEquipo:
+        """Forma un equipo nuevo (desde 1 alumno) con el siguiente número del curso, con su nombre y
+        el título de su proyecto si se dan (opcionales).
 
         Si alguno ya tiene equipo no crea nada ni mueve a nadie: informa quién y en cuál.
         """
         self._curso_o_error(curso_id)
+        nombre, proyecto = self._datos_equipo(nombre, proyecto)
         alumnos, con_equipo = self._alumnos_para_equipo(
             curso_id, alumno_ids, "Elige al menos un alumno para formar el equipo."
         )
@@ -784,7 +802,7 @@ class ServicioParticipaciones:
             return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo)
         with self._repo.transaccion():
             numero = self._repo.siguiente_numero_equipo(curso_id)
-            self._repo.crear_equipo(curso_id, numero)
+            self._repo.crear_equipo(curso_id, numero, nombre, proyecto)
             for alumno in alumnos:
                 self._repo.agregar_miembro_equipo(curso_id, alumno.id, numero)
         return ResultadoEquipo(EstadoEquipo.FORMADO, numero, alumnos)
@@ -850,11 +868,23 @@ class ServicioParticipaciones:
                 self._repo.quitar_miembro_equipo(curso_id, alumno.id)
 
     def equipos_del_curso(self, curso_id: int) -> list[Equipo]:
-        """Los equipos con al menos un miembro, por número."""
+        """Los equipos con al menos un miembro, por número, con su nombre y proyecto."""
+        datos = self._repo.datos_equipos(curso_id)
         return [
-            Equipo(curso_id, numero, miembros)
+            Equipo(curso_id, numero, miembros, *datos.get(numero, ("", "")))
             for numero, miembros in sorted(self._repo.miembros_por_equipo(curso_id).items())
         ]
+
+    def editar_equipo(self, curso_id: int, numero: int, nombre: str, proyecto: str) -> Equipo:
+        """Cambia el nombre y el título del proyecto de un equipo que tiene miembros (vacío los quita)."""
+        self._curso_o_error(curso_id)
+        miembros = self._repo.miembros_por_equipo(curso_id).get(numero)
+        if not miembros:
+            raise ErrorDominio(f"El equipo {numero} no existe o ya no tiene miembros.")
+        nombre, proyecto = self._datos_equipo(nombre, proyecto)
+        with self._repo.transaccion():
+            self._repo.actualizar_equipo(curso_id, numero, nombre, proyecto)
+        return Equipo(curso_id, numero, miembros, nombre, proyecto)
 
     def equipo_de(self, curso_id: int, alumno_id: int) -> int | None:
         return self._repo.equipo_de(curso_id, alumno_id)

@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS calificacion_proyecto (
 CREATE TABLE IF NOT EXISTS equipo (
     curso_id INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
     numero   INTEGER NOT NULL,
+    nombre   TEXT NOT NULL DEFAULT '',
+    proyecto TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (curso_id, numero)
 );
 
@@ -102,7 +104,17 @@ def conectar(ruta: str | Path = RUTA_POR_DEFECTO) -> sqlite3.Connection:
     conexion.row_factory = sqlite3.Row
     conexion.execute("PRAGMA foreign_keys = ON")
     conexion.executescript(ESQUEMA)
+    _migrar(conexion)
     return conexion
+
+
+def _migrar(conexion: sqlite3.Connection) -> None:
+    """Agrega a una base ya existente lo que `CREATE TABLE IF NOT EXISTS` no puede: columnas nuevas."""
+    columnas = {f["name"] for f in conexion.execute("PRAGMA table_info(equipo)")}
+    for nombre in ("nombre", "proyecto"):  # los equipos de la versión 1.4.0 no tenían nombre ni proyecto
+        if nombre not in columnas:
+            conexion.execute(f"ALTER TABLE equipo ADD COLUMN {nombre} TEXT NOT NULL DEFAULT ''")
+    conexion.commit()
 
 
 def respaldar(conexion: sqlite3.Connection, carpeta: str | Path, conservar: int = 10) -> Path:

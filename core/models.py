@@ -177,11 +177,14 @@ class EstadoEquipo(str, Enum):
 
 @dataclass
 class Equipo:
-    """Equipo de proyecto de un curso, con los miembros que tiene ahora (puede ser uno solo)."""
+    """Equipo de proyecto de un curso, con los miembros que tiene ahora (puede ser uno solo).
+    `nombre` y `proyecto` (título) son opcionales: vacíos si no se pusieron."""
 
     curso_id: int
     numero: int
     miembros: list[Alumno] = field(default_factory=list)
+    nombre: str = ""
+    proyecto: str = ""
 
 
 @dataclass

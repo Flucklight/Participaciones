@@ -28,8 +28,14 @@ from exporters.curso import exportar_curso, nombre_sugerido
 from importers.calificaciones_plataforma import leer_calificaciones
 
 from . import tema
-from .agrupar import agrupar_por_equipo, es_encabezado, iid_encabezado
-from .dialogos_curso import DialogoAlumnoNuevo, DialogoElegirAlumno, DialogoExamen, DialogoExportar
+from .agrupar import agrupar_por_equipo, es_encabezado, iid_encabezado, numero_de_encabezado
+from .dialogos_curso import (
+    DialogoAlumnoNuevo,
+    DialogoElegirAlumno,
+    DialogoEquipo,
+    DialogoExamen,
+    DialogoExportar,
+)
 from .dialogos_tareas import DialogoImportarTareas
 from .formato import formatear_decimas, leer_decimas, titulo_legible
 from .tabla import ESTILO, configurar_estilo
@@ -64,15 +70,15 @@ AJUSTES_MODO = {
 SIN_EXAMENES = "(sin exámenes)"
 
 COLUMNAS = (
-    ("numero", "No.", 55, "center"),
-    ("cuenta", "Cuenta", 120, "center"),
+    ("numero", "No.", 50, "center"),
+    ("cuenta", "Cuenta", 110, "center"),
     ("nombre", "Nombre", 320, "w"),
-    ("total", "Décimas", 100, "e"),
-    ("tareas", "Tareas", 90, "e"),
-    ("proyecto", "Proyecto", 100, "e"),
-    ("ultima", "Última", 110, "center"),
+    ("total", "Décimas", 90, "center"),
+    ("tareas", "Tareas", 80, "center"),
+    ("proyecto", "Proyecto", 95, "center"),
+    ("ultima", "Última", 100, "center"),
 )
-COLUMNA_EQUIPO = ("equipo", "Equipo", 100, "center")  # solo en el modo Proyecto
+COLUMNA_EQUIPO = ("equipo", "Equipo", 90, "center")  # solo en el modo Proyecto
 
 
 class VistaCurso(ctk.CTkFrame):
@@ -95,6 +101,7 @@ class VistaCurso(ctk.CTkFrame):
         self._modo = "participacion"
         self._examenes: list[Examen] = []
         self._firma_examenes: list[tuple[int, str]] = []
+        self._datos_equipos: dict[int, tuple[str, str]] = {}  # {número: (nombre, proyecto)}
         self._columnas: tuple = COLUMNAS
         self._examen_actual: Examen | None = None
         self._pendiente: tuple[Alumno, float] | None = None  # reemplazo por confirmar
@@ -338,7 +345,7 @@ class VistaCurso(ctk.CTkFrame):
     def _aplicar_columnas(self) -> None:
         """Columnas fijas más una por examen («Examen - <nombre>»), antes de «Última»."""
         examenes = tuple(
-            (f"examen_{e.id}", f"Examen - {e.nombre}", max(120, 7 * (len(e.nombre) + 9) + 40), "e")
+            (f"examen_{e.id}", f"Examen - {e.nombre}", max(120, 7 * (len(e.nombre) + 9) + 40), "center")
             for e in self._examenes
         )
         fijas = COLUMNAS[:3] + ((COLUMNA_EQUIPO,) if self._modo == "proyecto" else ()) + COLUMNAS[3:-1]
@@ -360,6 +367,9 @@ class VistaCurso(ctk.CTkFrame):
         if firma != self._firma_examenes:
             self._firma_examenes = firma
             self._aplicar_columnas()
+        self._datos_equipos = {
+            e.numero: (e.nombre, e.proyecto) for e in self._servicio.equipos_del_curso(self.curso.id)
+        }
         self._numeros = {f.alumno.id: n for n, f in enumerate(self._filas, start=1)}
         self._tipos = {f.alumno.id: f.tipo for f in self._filas}
         self._dibujar_tabla()
@@ -426,7 +436,13 @@ class VistaCurso(ctk.CTkFrame):
 
     def _insertar_agrupadas(self, filas: list[ResumenAlumno]) -> None:
         """Modo Proyecto: una fila de encabezado por equipo y debajo sus miembros."""
-        for grupo in agrupar_por_equipo(filas):
+        grupos = agrupar_por_equipo(filas, self._datos_equipos)
+        # El encabezado vive en la columna «Nombre»: se ensancha (hasta un tope) para que quepan el
+        # nombre del equipo y el título de su proyecto; la tabla ya se desplaza si no cabe todo.
+        largo = max((len(g.titulo) for g in grupos if g.numero is not None), default=0)
+        ancho = max(320, min(480, int(7.2 * largo) + 30))
+        self._tabla.column("nombre", width=ancho, minwidth=ancho)  # sin minwidth, ttk la encoge al caber
+        for grupo in grupos:
             if grupo.numero is not None:
                 valores = {c[0]: "" for c in self._columnas}
                 valores["nombre"] = grupo.titulo
@@ -465,7 +481,11 @@ class VistaCurso(ctk.CTkFrame):
     def _al_clic_tabla(self, evento) -> None:
         """Un clic en una fila pone al alumno en el campo de registro y pasa a las décimas."""
         iid = self._tabla.identify_row(evento.y)
-        if not iid or es_encabezado(iid) or self._tabla.identify_region(evento.x, evento.y) == "heading":
+        if not iid or self._tabla.identify_region(evento.x, evento.y) == "heading":
+            return
+        if es_encabezado(iid):  # evaluando, el clic en un equipo manda «equipo N» al registro
+            if self._modo == "proyecto" and not self._formando:
+                self._poner_equipo(numero_de_encabezado(iid))
             return
         if self._formando:  # formando equipos el clic solo selecciona
             return
@@ -493,10 +513,14 @@ class VistaCurso(ctk.CTkFrame):
         return "break"
 
     def _al_doble_clic(self, evento) -> None:
-        """Doble clic en una fila abre el historial de ese alumno."""
+        """Doble clic en una fila abre el historial de ese alumno; en un equipo, edita sus datos."""
+        iid = self._tabla.identify_row(evento.y)
+        if iid and es_encabezado(iid):
+            if self._modo == "proyecto" and self._tabla.identify_region(evento.x, evento.y) != "heading":
+                self.editar_equipo(numero_de_encabezado(iid))
+            return
         if self._formando:  # formando equipos cada clic selecciona; el doble clic no debe abrir nada
             return
-        iid = self._tabla.identify_row(evento.y)
         if iid and not es_encabezado(iid) and self._tabla.identify_region(evento.x, evento.y) != "heading":
             self._app.abrir_historial(self.curso.id, int(iid))
 
@@ -1211,8 +1235,11 @@ class VistaCurso(ctk.CTkFrame):
     def usar_equipo(self) -> None:
         """Cambia el destino de la calificación al equipo del alumno cargado («equipo N»)."""
         numero = self._equipo_del_elegido()
-        if numero is None:
-            return
+        if numero is not None:
+            self._poner_equipo(numero)
+
+    def _poner_equipo(self, numero: int) -> None:
+        """Pone «equipo N» como destino en el registro y pasa el foco a la calificación."""
         self._elegido = None
         self._entrada_alumno.delete(0, "end")
         self._entrada_alumno.insert(0, f"equipo {numero}")
@@ -1424,18 +1451,36 @@ class VistaCurso(ctk.CTkFrame):
             text="Sacar de equipo" if con_equipo == 0 else f"Sacar de equipo ({con_equipo})",
         )
 
+    def _ya_con_equipo(self, ids: list[int]) -> list[tuple[Alumno, int]]:
+        return [(f.alumno, f.equipo) for f in self._filas if f.alumno.id in ids and f.equipo is not None]
+
+    @staticmethod
+    def _aviso_ya_tienen_equipo(con_equipo: list[tuple[Alumno, int]]) -> str:
+        quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in con_equipo)
+        return f"Ya tienen equipo: {quienes}. Sácalos primero (botón «Sacar de equipo» o clic derecho)."
+
     def crear_equipo(self) -> None:
+        """Pide el nombre del equipo y el título de su proyecto (opcionales) y lo forma."""
         ids = self._seleccionados()
         if not ids:
             return
-        try:
-            resultado = self._servicio.formar_equipo(self.curso.id, ids)
-        except ErrorDominio as error:
-            self._error(str(error))
+        con_equipo = self._ya_con_equipo(ids)
+        if con_equipo:  # se avisa antes de pedir datos para un equipo que no se puede formar
+            self._error(self._aviso_ya_tienen_equipo(con_equipo))
             return
-        if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
-            quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in resultado.con_equipo)
-            self._error(f"Ya tienen equipo: {quienes}. Sácalos primero (botón «Sacar de equipo» o clic derecho).")
+
+        def guardar(nombre: str, proyecto: str):
+            resultado = self._servicio.formar_equipo(self.curso.id, ids, nombre, proyecto)
+            if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
+                raise ErrorDominio(self._aviso_ya_tienen_equipo(resultado.con_equipo))
+            return resultado
+
+        k = len(ids)
+        resultado = DialogoEquipo(
+            self, f"Nuevo equipo con {k} alumno{'s' if k != 1 else ''}", guardar, texto_ok="Crear equipo"
+        ).mostrar()
+        if resultado is None:
+            self._info("Se canceló: no se formó el equipo.")
             return
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
@@ -1448,6 +1493,17 @@ class VistaCurso(ctk.CTkFrame):
             f"Equipo {resultado.numero} formado con {k} alumno{'s' if k != 1 else ''}.", deshacible=True
         )
         self._actualizar_barra()
+
+    def editar_equipo(self, numero: int) -> None:
+        """Doble clic en el encabezado de un equipo: cambia su nombre y el título de su proyecto."""
+        nombre, proyecto = self._datos_equipos.get(numero, ("", ""))
+        equipo = DialogoEquipo(
+            self, f"Equipo {numero}",
+            lambda n, p: self._servicio.editar_equipo(self.curso.id, numero, n, p), nombre, proyecto,
+        ).mostrar()
+        if equipo:
+            self.recargar()
+            self._info(f"Equipo {numero} actualizado.")
 
     def _resaltar_miembros(self, alumno_ids: list[int]) -> None:
         iids = [str(i) for i in alumno_ids if self._tabla.exists(str(i))]

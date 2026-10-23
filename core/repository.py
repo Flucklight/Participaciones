@@ -486,8 +486,24 @@ class Repositorio:
             "SELECT COALESCE(MAX(numero), 0) + 1 FROM equipo WHERE curso_id = ?", (curso_id,)
         ).fetchone()[0]
 
-    def crear_equipo(self, curso_id: int, numero: int) -> None:
-        self._db.execute("INSERT INTO equipo (curso_id, numero) VALUES (?, ?)", (curso_id, numero))
+    def crear_equipo(self, curso_id: int, numero: int, nombre: str = "", proyecto: str = "") -> None:
+        self._db.execute(
+            "INSERT INTO equipo (curso_id, numero, nombre, proyecto) VALUES (?, ?, ?, ?)",
+            (curso_id, numero, nombre, proyecto),
+        )
+
+    def actualizar_equipo(self, curso_id: int, numero: int, nombre: str, proyecto: str) -> None:
+        self._db.execute(
+            "UPDATE equipo SET nombre = ?, proyecto = ? WHERE curso_id = ? AND numero = ?",
+            (nombre, proyecto, curso_id, numero),
+        )
+
+    def datos_equipos(self, curso_id: int) -> dict[int, tuple[str, str]]:
+        """{número: (nombre, título del proyecto)} de todos los equipos del curso."""
+        filas = self._db.execute(
+            "SELECT numero, nombre, proyecto FROM equipo WHERE curso_id = ?", (curso_id,)
+        )
+        return {f["numero"]: (f["nombre"], f["proyecto"]) for f in filas}
 
     def agregar_miembro_equipo(self, curso_id: int, alumno_id: int, numero: int) -> None:
         self._db.execute(

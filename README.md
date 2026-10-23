@@ -26,7 +26,7 @@ participacion(id, curso_id, alumno_id, decimas, fecha, nota)
 examen(id, curso_id, nombre, nombre_norm)               -- único por curso+nombre; sin puntaje máximo
 calificacion(examen_id, alumno_id, puntos, fecha)       -- una por alumno y examen
 calificacion_tareas(curso_id, alumno_id, puntos, fecha) -- una por alumno y curso; promedio ya calculado fuera
-equipo(curso_id, numero)                                -- equipos de proyecto; no se borran al quedar vacíos
+equipo(curso_id, numero, nombre, proyecto)              -- equipos de proyecto (nombre y proyecto opcionales); no se borran al quedar vacíos
 miembro_equipo(curso_id, alumno_id, numero)             -- un alumno en un solo equipo por curso
 ```
 

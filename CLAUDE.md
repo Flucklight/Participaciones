@@ -33,7 +33,7 @@ examen(id, curso_id, nombre, nombre_norm)  -- único por curso+nombre_norm; sin 
 calificacion(examen_id, alumno_id, puntos, fecha)  -- una por alumno y examen (PK compuesta)
 calificacion_tareas(curso_id, alumno_id, puntos, fecha)  -- una por alumno y curso (PK compuesta); promedio ya calculado fuera
 calificacion_proyecto(curso_id, alumno_id, puntos, fecha)  -- una por alumno y curso (PK compuesta); sin vínculo con el equipo
-equipo(curso_id, numero)  -- equipos de proyecto; no se borran al quedar vacíos (así el número no se reutiliza)
+equipo(curso_id, numero, nombre, proyecto)  -- equipos de proyecto; nombre y título del proyecto opcionales ('' si no hay); no se borran al quedar vacíos (así el número no se reutiliza)
 miembro_equipo(curso_id, alumno_id, numero)  -- un alumno en un solo equipo por curso (PK compuesta)
 ```
 
@@ -95,7 +95,7 @@ miembro_equipo(curso_id, alumno_id, numero)  -- un alumno en un solo equipo por 
    - La importación completa se puede **deshacer**.
 
 16. **Equipos de proyecto** (independientes de décimas, exámenes y tareas; no tocan ninguna calificación):
-   - Un equipo se forma con **1 o más alumnos** del curso (también oyentes). El número es **incremental por curso** (máximo histórico + 1) y **nunca se reutiliza**, aunque el equipo se quede sin miembros; un equipo vacío no aparece en pantalla.
+   - Un equipo se forma con **1 o más alumnos** del curso (también oyentes), con un **nombre** (máx. 60 caracteres) y el **título de su proyecto** (máx. 120), ambos opcionales y editables después; no se exige que sean únicos. El número es **incremental por curso** (máximo histórico + 1) y **nunca se reutiliza**, aunque el equipo se quede sin miembros; un equipo vacío no aparece en pantalla.
    - Un alumno está en **un solo equipo** por curso. Si entre los elegidos hay quien ya tiene equipo, **no se crea ni se mueve nada** y se informa quién y en cuál; hay que separarlo antes. Nunca se mueve a nadie sin que lo pida.
    - **Separar** saca a uno o varios alumnos de su equipo (quien no tiene equipo se ignora). **Agregar** suma alumnos sin equipo a un equipo que ya tiene miembros (a quien ya tiene equipo no se le ofrece; un equipo vacío no se revive). Formar, separar y agregar se pueden deshacer. Eliminar un curso borra sus equipos.
 
