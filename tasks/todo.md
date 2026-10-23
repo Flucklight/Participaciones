@@ -45,13 +45,13 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Archivos: `ui_desktop/tema.py`, `ui_desktop/tabla.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`, `tests/test_ui_curso.py`
   - Dependencias: T2
 
-- [ ] **T4: Formar equipos** (M)
+- [x] **T4: Formar equipos** (M)
   - Descripción: botón «Formar equipos» (activar/desactivar), selección múltiple con Ctrl/Mayús sin cargar al alumno, barra «N seleccionados», «Crear equipo con N alumnos», rechazo si alguien ya tiene equipo, franja y «Deshacer».
   - Aceptación:
-    - [ ] Con el modo activo se pueden seleccionar varios alumnos; el clic ya no carga al alumno.
-    - [ ] «Crear» asigna el siguiente número, resalta a los miembros y la tabla se reagrupa; deshabilitado sin selección; 1 alumno forma equipo de 1.
-    - [ ] Incluir a alguien con equipo rechaza, dice quién y en cuál, y no cambia nada.
-    - [ ] «Deshacer» elimina el equipo recién creado; desactivar el modo o cambiar de modo limpia la selección.
+    - [x] Con el modo activo se pueden seleccionar varios alumnos; el clic ya no carga al alumno.
+    - [x] «Crear» asigna el siguiente número, resalta a los miembros y la tabla se reagrupa; deshabilitado sin selección; 1 alumno forma equipo de 1.
+    - [x] Incluir a alguien con equipo rechaza, dice quién y en cuál, y no cambia nada.
+    - [x] «Deshacer» elimina el equipo recién creado; desactivar el modo o cambiar de modo limpia la selección.
   - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_equipos.py -q`
   - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`
   - Dependencias: T3

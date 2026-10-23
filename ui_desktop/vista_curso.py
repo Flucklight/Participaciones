@@ -13,6 +13,7 @@ from core.models import (
     Alumno,
     Calificacion,
     CalificacionTareas,
+    EstadoEquipo,
     EstadoRegistro,
     Examen,
     ResultadoCalificacion,
@@ -101,6 +102,8 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_tareas: tuple[int, CalificacionTareas | None] | None = None
         # Última importación de tareas: {alumno_id: calificación previa} para deshacerla completa.
         self._ultima_importacion: dict[int, CalificacionTareas | None] | None = None
+        # Último cambio de equipos: ("formado", número) o ("separado", {alumno_id: equipo}) para deshacer.
+        self._ultima_equipo: tuple[str, object] | None = None
 
         self._construir_encabezado()
         self._construir_registro()
@@ -212,6 +215,22 @@ class VistaCurso(ctk.CTkFrame):
         )
         self._boton_guardar.grid(row=0, column=2 + len(ATAJOS_DECIMAS), padx=(10, 0))
 
+        # Solo visible en modo Proyecto: herramientas de equipo (la tabla es el selector de alumnos).
+        self._formando = False
+        self._fila_equipos = ctk.CTkFrame(marco, fg_color="transparent")
+        self._boton_formar = ctk.CTkButton(
+            self._fila_equipos, text="Formar equipos", width=150, height=34, command=self.alternar_formar,
+            fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
+            text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
+        )
+        self._boton_formar.pack(side="left")
+        self._etiqueta_seleccion = ctk.CTkLabel(self._fila_equipos, text="", text_color=tema.COLOR_TEXTO_SUAVE)
+        self._etiqueta_seleccion.pack(side="left", padx=14)
+        self._boton_crear_equipo = ctk.CTkButton(
+            self._fila_equipos, text="Crear equipo", width=210, height=34, command=self.crear_equipo,
+            fg_color=tema.COLOR_PROYECTO, hover_color=tema.COLOR_PROYECTO_HOVER, state="disabled",
+        )
+
         # Sugerencias en línea (debajo de la fila), ocultas hasta que haya coincidencias.
         self._caja_sugerencias = ctk.CTkFrame(marco, fg_color="transparent")
         self._botones_sug: list[ctk.CTkButton] = []
@@ -281,11 +300,13 @@ class VistaCurso(ctk.CTkFrame):
         self._tabla.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
         barra.pack(side="right", fill="y", padx=(0, 4), pady=8)
         self._tabla.tag_configure("oyente", foreground=colores["suave"])
+        # En ttk gana la etiqueta configurada primero: «reciente» va antes que los tonos de equipo
+        # para que el resaltado de lo recién guardado se vea sobre ellos.
+        self._tabla.tag_configure("reciente", background=colores["reciente"])
         for banda in (0, 1):  # equipos: encabezado fuerte y fila suave, dos tonos alternados
             self._tabla.tag_configure(f"enc{banda}", background=colores[f"enc{banda}"],
                                       font=tema.fuente(12, "bold"))
             self._tabla.tag_configure(f"fila{banda}", background=colores[f"fila{banda}"])
-        self._tabla.tag_configure("reciente", background=colores["reciente"])
 
     # ====================== datos / tabla ======================
     def _aplicar_columnas(self) -> None:
@@ -393,6 +414,7 @@ class VistaCurso(ctk.CTkFrame):
         encabezados = [i for i in self._tabla.selection() if es_encabezado(i)]
         if encabezados:
             self._tabla.selection_remove(*encabezados)
+        self._actualizar_barra()
 
     def _poner_encabezados(self) -> None:
         for clave, titulo, *_ in self._columnas:
@@ -416,6 +438,8 @@ class VistaCurso(ctk.CTkFrame):
         """Un clic en una fila pone al alumno en el campo de registro y pasa a las décimas."""
         iid = self._tabla.identify_row(evento.y)
         if not iid or es_encabezado(iid) or self._tabla.identify_region(evento.x, evento.y) == "heading":
+            return
+        if self._formando:  # formando equipos el clic solo selecciona
             return
         fila = next((f for f in self._filas if str(f.alumno.id) == iid), None)
         if fila:
@@ -624,6 +648,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_calificacion = None
         self._ultima_tareas = None
         self._ultima_importacion = None
+        self._ultima_equipo = None
         nuevo = "  (alumno agregado)" if alumno_nuevo else ""
         aplicadas = resultado.decimas_aplicadas
         if aplicadas is not None and abs(aplicadas - resultado.decimas) > 1e-9:
@@ -645,6 +670,9 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.focus_set()
 
     def deshacer(self) -> None:
+        if self._ultima_equipo is not None:
+            self._deshacer_equipo()
+            return
         if self._ultima_importacion is not None:
             self._deshacer_importacion()
             return
@@ -680,8 +708,14 @@ class VistaCurso(ctk.CTkFrame):
         if self._modo == "proyecto":  # sin campo de registro: solo herramientas de equipo
             self._ocultar_sugerencias()
             self._fila_registro.pack_forget()
-        elif not self._fila_registro.winfo_manager():
-            self._fila_registro.pack(fill="x", padx=16, pady=(6, 12))
+            self._fila_equipos.pack(fill="x", padx=16, pady=(6, 12))
+        else:
+            self._fila_equipos.pack_forget()
+            if self._formando:
+                self._formando = False
+                self._aplicar_modo_formar()
+            if not self._fila_registro.winfo_manager():
+                self._fila_registro.pack(fill="x", padx=16, pady=(6, 12))
         if (self._modo == "proyecto") != era_proyecto:  # cambian las columnas y el agrupado
             self._aplicar_columnas()
             self.recargar()  # también trae los equipos al día
@@ -904,6 +938,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = None
         self._ultima_tareas = None
         self._ultima_importacion = None
+        self._ultima_equipo = None
         self._ultima_calificacion = (
             resultado.examen.id, resultado.alumno.id, resultado.calificacion_anterior
         )
@@ -1031,6 +1066,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = None
         self._ultima_calificacion = None
         self._ultima_importacion = None
+        self._ultima_equipo = None
         self._ultima_tareas = (resultado.alumno.id, resultado.anterior)
         self._pendiente = None
         self._elegido = None
@@ -1059,6 +1095,7 @@ class VistaCurso(ctk.CTkFrame):
     def _deshacer_importacion(self) -> None:
         anteriores = self._ultima_importacion
         self._ultima_importacion = None
+        self._ultima_equipo = None
         try:
             self._servicio.deshacer_importacion_tareas(self.curso.id, anteriores)
         except ErrorDominio as error:
@@ -1067,6 +1104,108 @@ class VistaCurso(ctk.CTkFrame):
         self.recargar()
         self._info(f"Se deshizo la importación: {len(anteriores)} calificaciones de tareas restauradas.")
         self._entrada_alumno.focus_set()
+
+    # ====================== equipos de proyecto ======================
+    def alternar_formar(self) -> None:
+        """Activa o desactiva «Formar equipos»: con él activo la tabla permite elegir varios alumnos."""
+        self._formando = not self._formando
+        self._aplicar_modo_formar()
+        self._info(
+            "Elige a los alumnos del equipo (Ctrl o Mayús para varios) y pulsa «Crear equipo»."
+            if self._formando else AJUSTES_MODO["proyecto"][5]
+        )
+
+    def _aplicar_modo_formar(self) -> None:
+        seleccion = self._tabla.selection()
+        if seleccion:
+            self._tabla.selection_remove(*seleccion)
+        self._tabla.configure(selectmode="extended" if self._formando else "browse")
+        if self._formando:
+            self._boton_formar.configure(
+                fg_color=tema.COLOR_PROYECTO, hover_color=tema.COLOR_PROYECTO_HOVER,
+                text_color=ctk.ThemeManager.theme["CTkButton"]["text_color"],
+            )
+            self._boton_crear_equipo.pack(side="right")
+        else:
+            self._boton_formar.configure(
+                fg_color="transparent", hover_color=tema.COLOR_NAV_ACTIVO, text_color=tema.COLOR_TEXTO,
+            )
+            self._boton_crear_equipo.pack_forget()
+        self._actualizar_barra()
+
+    def _seleccionados(self) -> list[int]:
+        return [int(i) for i in self._tabla.selection() if not es_encabezado(i)]
+
+    def _actualizar_barra(self) -> None:
+        n = len(self._seleccionados()) if self._formando else 0
+        if not self._formando:
+            self._etiqueta_seleccion.configure(text="")
+        else:
+            self._etiqueta_seleccion.configure(
+                text="Ninguno seleccionado" if n == 0 else f"{n} seleccionado{'s' if n != 1 else ''}"
+            )
+        self._boton_crear_equipo.configure(
+            state="normal" if n else "disabled",
+            text="Crear equipo" if n == 0 else f"Crear equipo con {n} alumno{'s' if n != 1 else ''}",
+        )
+
+    def crear_equipo(self) -> None:
+        ids = self._seleccionados()
+        if not ids:
+            return
+        try:
+            resultado = self._servicio.formar_equipo(self.curso.id, ids)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
+            quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in resultado.con_equipo)
+            self._error(f"Ya tienen equipo: {quienes}. Sepáralos primero (clic derecho › Separar).")
+            return
+        self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
+        self._ultima_importacion = None
+        self._ultima_equipo = ("formado", resultado.numero)
+        self.recargar()
+        self._resaltar_miembros([a.id for a in resultado.miembros])
+        k = len(resultado.miembros)
+        self._exito(
+            f"Equipo {resultado.numero} formado con {k} alumno{'s' if k != 1 else ''}.", deshacible=True
+        )
+        self._actualizar_barra()
+
+    def _resaltar_miembros(self, alumno_ids: list[int]) -> None:
+        iids = [str(i) for i in alumno_ids if self._tabla.exists(str(i))]
+        for iid in iids:
+            self._tabla.item(iid, tags=tuple(self._tabla.item(iid, "tags")) + ("reciente",))
+        if iids:
+            self._tabla.see(iids[0])
+        if self._tarea_resaltado:
+            self.after_cancel(self._tarea_resaltado)
+        self._tarea_resaltado = self.after(MS_RESALTADO, lambda: self._quitar_resaltados(iids))
+
+    def _quitar_resaltados(self, iids: list[str]) -> None:
+        self._tarea_resaltado = None
+        if not self.winfo_exists():
+            return
+        for iid in iids:
+            if self._tabla.exists(iid):
+                self._tabla.item(iid, tags=tuple(t for t in self._tabla.item(iid, "tags") if t != "reciente"))
+
+    def _deshacer_equipo(self) -> None:
+        tipo, dato = self._ultima_equipo
+        self._ultima_equipo = None
+        try:
+            if tipo == "formado":
+                self._servicio.deshacer_equipo(self.curso.id, dato)
+                texto = f"Se deshizo el equipo {dato}: sus alumnos quedaron sin equipo."
+            else:
+                self._servicio.deshacer_separacion(self.curso.id, dato)
+                texto = f"Se deshizo la separación: {len(dato)} alumnos volvieron a su equipo."
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        self.recargar()
+        self._info(texto)
 
     # ====================== alumnos ======================
     def agregar_alumno(self) -> None:
@@ -1114,6 +1253,7 @@ class VistaCurso(ctk.CTkFrame):
         self._pendiente = None
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None  # lo anterior ya no se deshace
         self._ultima_importacion = resultado.anteriores or None
+        self._ultima_equipo = None
         self.recargar()
         self._exito(
             f"Tareas importadas: {resultado.actualizadas} actualizadas, "
