@@ -27,9 +27,9 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
   - Dependencias: T1
 
 ### Checkpoint 1: Núcleo
-- [ ] Suite completa en verde (371 pruebas previas intactas).
-- [ ] Una base `.db` existente abre y conserva sus datos.
-- [ ] Revisión con la persona antes de seguir a la UI.
+- [x] Suite completa en verde (371 pruebas previas intactas).
+- [x] Una base `.db` existente abre y conserva sus datos.
+- [x] Revisión con la persona antes de seguir a la UI.
 
 ## Fase 2: Sección «Proyecto»
 
