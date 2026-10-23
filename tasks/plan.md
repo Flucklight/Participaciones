@@ -1,43 +1,53 @@
-# Plan de implementación: importar calificaciones de tareas (módulo `tareas-importacion`)
+# Plan de implementación: equipos para el proyecto final (módulo `equipos`)
 
-Spec: `SPEC-tareas-importacion.md`. Mapa: `MAPA-tareas.md`. Tareas en `tasks/todo.md`.
-(El plan del módulo `tareas`, completo y fusionado en `main`, quedó en `tasks/plan-tareas.md` y `tasks/todo-tareas.md`.)
+Spec: `SPEC-equipos.md`. Mapa: `MAPA-proyecto.md`. Tareas en `tasks/todo.md`.
+(Los planes anteriores viven en `tasks/plan-tareas.md` y `tasks/plan-tareas-importacion.md`. El módulo `proyecto` tendrá su propio plan cuando `equipos` esté terminado.)
 
 ## Resumen
-Un botón «Importar tareas» en la pantalla Curso lee un `.xlsx` o `.csv` de otra plataforma, muestra una vista previa (quién cambia, quién queda igual, dudosos, omitidos) y, solo al confirmar, reemplaza la calificación de tareas de cada alumno identificado **por nombre**. Se puede deshacer la importación completa. Reutiliza el servicio de `tareas` para validar y guardar.
+Un cuarto modo «Proyecto» en el selector de la pantalla Curso. En él, un botón «Formar equipos» activa la selección múltiple y permite crear equipos (número incremental por curso que nunca se reutiliza, desde 1 alumno), y el clic derecho «Separar» saca a un miembro. La tabla, solo en este modo, se agrupa por equipo con **filas de encabezado coloreadas** («Equipo 2 · 3 alumnos»), dos tonos alternados, y los alumnos sin equipo al final. No toca calificaciones.
 
 ## Decisiones de arquitectura
-- **Lector sin base ni UI** (`importers/calificaciones_plataforma.py`, como `lista_aragon.py`): localiza alumnos por su forma (apellidos y nombres no vacíos, «@» en la 3.ª columna, algún número), no por posiciones fijas; devuelve columnas numéricas con rótulo y filas con `valores` por rótulo. Cubre las dos disposiciones (xlsx y csv).
-- **Coincidencia por nombre en el servicio** (regla de negocio): exacta única → aplica; por palabras única → dudosa (solo con confirmación); varias o ninguna → omitida. Nunca crea alumnos. Si el archivo trae columna de cuenta, tiene prioridad (supuesto 1b).
-- **Tres pasos en el servicio:** `previsualizar_importacion_tareas` (no escribe), `importar_tareas(confirmadas)` (una transacción) y `deshacer_importacion_tareas`. La vista previa y la importación comparten el mismo cálculo para que nunca difieran.
-- **Lectura única de calificaciones** del curso (`tareas_por_alumno` ya existe) para calcular «antes → después» sin consultas por alumno.
-- **UI delgada:** `DialogoImportarTareas` solo muestra lo que devuelve el servicio; el botón y la franja de «Deshacer importación» viven en `vista_curso.py`.
+- **Reglas en el servicio, SQL en el repositorio.** `formar_equipo` devuelve un resultado (formado, o «ya tienen equipo» con quién y cuál) sin escribir nada si rechaza. Separar y deshacer devuelven lo necesario para revertir (`{alumno_id: número}`).
+- **El número nunca se reutiliza sin tocar `curso`:** los equipos vacíos no se borran; el siguiente número es `MAX(numero)+1` en `equipo`. La vista ignora los equipos sin miembros.
+- **Un alumno, un equipo:** la PK `(curso_id, alumno_id)` de `miembro_equipo` lo garantiza aun si el servicio fallara.
+- **Tabla agrupada = filas de encabezado en el mismo `Treeview`** (variante C elegida). Las filas de encabezado llevan iid `equipo_N` (los alumnos usan su id como texto) y toda la lógica que reacciona a filas (clic, doble clic, selección, resaltado, menú contextual) las ignora explícitamente. La agrupación vive en una función pura (`agrupar_por_equipo`) fácil de probar sin UI.
+- **Orden:** por equipo y, dentro de cada uno, por la columna elegida (nombre por omisión); los equipos conservan su orden por número. En los otros tres modos nada cambia.
+- **Colores solo en `tema.py`:** `COLOR_PROYECTO` (+ hover) para el modo y dos pares de tonos (encabezado fuerte y fila suave) para equipos; `configurar_estilo()` los entrega a las etiquetas del `Treeview`.
+- **El modo «Proyecto» no tiene campo de registro todavía** (llega con el módulo `proyecto`): la franja de registro se reemplaza por la ayuda y las herramientas de equipo.
 
 ## Grafo de dependencias
 
 ```
-modelos + lector xlsx/csv (T1) ──► servicio: vista previa y coincidencia (T2)
-                                        │
-                                        ▼
-                         importar y deshacer, transacción (T3)
-                                        │
-                                        ▼
-                    diálogo con vista previa y botón en Curso (T4)
-                                        │
-                                        ▼
-                  franja «Deshacer importación», docs R15 y versión (T5)
+tablas equipo y miembro_equipo + modelos + R16 en CLAUDE.md (T1)
+        │
+        ▼
+servicio: formar, separar, deshacer, consultas, equipo en el resumen (T2)
+        │
+        ▼
+cuarto modo «Proyecto»: selector, F2 de cuatro, color, columna «Equipo»,
+tabla agrupada con encabezados coloreados (T3)
+        │
+        ▼
+«Formar equipos»: selección múltiple, barra, crear, rechazo y deshacer (T4)
+        │
+        ▼
+clic derecho «Separar» (una o varias filas) y deshacer (T5)
+        │
+        ▼
+documentación y versión 1.4.0 (T6)
 ```
 
-Orden: T1 → T2 → T3 → T4 → T5. Se documenta R15 en `CLAUDE.md` al iniciar T2 (el proyecto exige proponer la regla antes de implementarla).
+Orden: T1 → T2 → T3 → T4 → T5 → T6. T3 es la rebanada vertical más riesgosa (cambia cómo se dibuja la tabla): va antes de las acciones para fallar pronto.
 
 ## Riesgos y mitigaciones
 | Riesgo | Impacto | Mitigación |
 |---|---|---|
-| Dos disposiciones distintas (xlsx y csv) y más que puedan venir | Alto | Detectar alumnos por forma; pruebas con ambas disposiciones ficticias y muestras reales opcionales por variable de entorno |
-| Nombres que no coinciden (orden, acentos, segundo nombre) | Medio | Coincidencia exacta → por palabras (dudosa, confirmada a mano); lo demás se lista, nunca se adivina |
-| Fórmula sin valor calculado guardado en el xlsx | Medio | Leer con `data_only=True`; celda vacía = «sin dato», no cambia lo existente |
-| Sobrescribir calificaciones por error | Alto | Vista previa obligatoria, «antes → después», deshacer de toda la importación |
-| Datos reales filtrándose a código o commits | Alto | Fixtures ficticias; muestras reales solo por variable de entorno; `.gitignore` ya excluye `*.xlsx` y `*.csv` |
+| Las filas de encabezado se cuelan en el clic, la selección, el resaltado o el conteo | Alto | Prefijo propio de iid, un solo punto que decide «¿es alumno?», y pruebas de UI específicas para cada reacción |
+| El orden por otra columna se rompe con grupos | Medio | Orden dentro de cada equipo en `agrupar_por_equipo`, probado como función pura |
+| El clic en una fila deja de cargar al alumno en otros modos | Alto | La selección múltiple y el cambio de clic solo existen con «Formar equipos» activo; pruebas de regresión del clic en los demás modos |
+| Los tonos de equipo chocan con la selección azul o el resaltado verde | Medio | Revisar capturas en claro y oscuro con selección y resaltado (se hizo el prototipo; se repite en la UI real) |
+| Cambiar de tres a cuatro modos rompe las pruebas de F2 y del selector | Bajo | Ajustarlas solo donde el ciclo cambie |
+| `Treeview` con selección múltiple y el evento `<ButtonRelease-1>` existente | Medio | Separar el manejador de clic por modo y probarlo con Ctrl/Mayús |
 
 ## Preguntas abiertas
-Ninguna. Decisiones de la persona recogidas en la spec.
+- ¿Hacer clic en el encabezado de un equipo debería **seleccionar a todos sus miembros** (útil para separar a todos o ver el equipo)? La spec dice que el encabezado no hace nada; lo dejo así salvo que pidas lo contrario.

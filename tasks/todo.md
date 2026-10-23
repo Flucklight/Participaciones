@@ -1,72 +1,85 @@
-# Importar tareas: calificaciones desde archivo (módulo `tareas-importacion`)
+# Equipos para el proyecto final (módulo `equipos`)
 
 Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque manual: `.venv\Scripts\python.exe main.py`.
 
-## Fase 1: Lector y vista previa (sin UI)
+## Fase 1: Núcleo (sin UI)
 
-- [x] **T1: Lector de xlsx/csv y modelos** (M)
-  - Descripción: `importers/calificaciones_plataforma.py` lee ambas disposiciones y devuelve un `ArchivoCalificaciones` (columnas numéricas con rótulo, filas de alumnos, grupo/ciclo si existen); agrega `conftest` con generadores ficticios.
+- [ ] **T1: Tablas, modelos y regla documentada** (S)
+  - Descripción: crear `equipo` y `miembro_equipo`, las dataclasses `Equipo`/`ResultadoEquipo` y `ResumenAlumno.equipo`, y documentar R16 y el modelo en `CLAUDE.md` antes de seguir.
   - Aceptación:
-    - [x] Localiza alumnos por forma, sin posiciones fijas; ignora «Media de la clase», `Fecha`, `Puntos` y filas vacías.
-    - [x] Lista las columnas numéricas con su rótulo (incluida la sin encabezado) y sugiere la de más a la derecha.
-    - [x] `.csv` con coma o punto y coma, con y sin BOM; lee grupo y ciclo del xlsx.
-    - [x] Archivo ajeno, inexistente o sin alumnos → `ErrorImportacion` claro; fórmula sin valor → «sin dato».
-  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_importar_tareas.py -q`
-  - Archivos: `importers/calificaciones_plataforma.py`, `core/models.py`, `tests/conftest.py`, `tests/test_importar_tareas.py`
+    - [ ] `conectar()` crea las tablas en una base nueva y en una existente sin perder datos.
+    - [ ] La PK impide que un alumno esté en dos equipos del mismo curso; borrar curso o alumno limpia en cascada.
+    - [ ] `CLAUDE.md` tiene el modelo y R16.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_equipos.py -q`
+  - Archivos: `core/database.py`, `core/models.py`, `CLAUDE.md`, `tests/test_equipos.py`
   - Dependencias: ninguna
 
-- [x] **T2: Servicio de vista previa y coincidencia por nombre** (M)
-  - Descripción: documentar R15 en `CLAUDE.md`; `previsualizar_importacion_tareas(curso_id, archivo, columna)` clasifica filas (aplicar / dudosa / omitida) y cuenta cambian, quedan igual y no tocados. No escribe.
+- [ ] **T2: Servicio de equipos** (M)
+  - Descripción: `formar_equipo`, `separar_de_equipo`, `deshacer_equipo`, `deshacer_separacion`, `equipos_del_curso`, `equipo_de`; `resumen_curso` trae `equipo`.
   - Aceptación:
-    - [x] Exacta única aplica; por palabras única es dudosa; varias o ninguna se omite; nombre repetido en el archivo se omite.
-    - [x] Cuenta en el archivo, si existe, tiene prioridad; nunca se crean alumnos.
-    - [x] Valor negativo o no numérico se omite con motivo; celda vacía no cambia lo existente.
-    - [x] Verificación de grupo si el archivo lo trae.
-    - [x] No guarda nada.
-  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_importar_tareas.py -q`
-  - Archivos: `core/services.py`, `core/repository.py`, `core/models.py`, `CLAUDE.md`, `tests/test_importar_tareas.py`
+    - [ ] Forma con 1 o más alumnos; rechaza lista vacía y alumnos no inscritos.
+    - [ ] Numeración 1, 2, 3 por curso, independiente entre cursos; **no se reutiliza** tras separar a todos.
+    - [ ] Si alguien ya tiene equipo: no crea ni mueve nada y dice quién y en cuál.
+    - [ ] Separar uno o varios; separar a quien no tiene equipo no falla; deshacer revierte ambas operaciones.
+    - [ ] Décimas, exámenes y tareas no cambian.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_equipos.py tests/test_cursos.py -q`
+  - Archivos: `core/services.py`, `core/repository.py`, `core/models.py`, `tests/test_equipos.py`
   - Dependencias: T1
 
-### Checkpoint 1: Lector y vista previa
-- [x] Suite completa en verde (343 pasadas, 3 omitidas); con `PLATAFORMA_REAL` y `PLATAFORMA_REAL_CSV` las muestras reales también.
-- [ ] Revisión con la persona antes de seguir a guardar y a la UI.
+### Checkpoint 1: Núcleo
+- [ ] Suite completa en verde (371 pruebas previas intactas).
+- [ ] Una base `.db` existente abre y conserva sus datos.
+- [ ] Revisión con la persona antes de seguir a la UI.
 
-## Fase 2: Guardar y deshacer
+## Fase 2: Sección «Proyecto»
 
-- [x] **T3: Importar y deshacer** (M)
-  - Descripción: `importar_tareas(..., confirmadas)` aplica en una transacción lo claro más las dudosas confirmadas; `deshacer_importacion_tareas` restaura o elimina.
+- [ ] **T3: Modo «Proyecto» y tabla agrupada por equipo** (L: el riesgo está en la tabla)
+  - Descripción: cuarto modo (F2 recorre cuatro), color ciruela, columna «Equipo» solo en este modo, y la tabla agrupada con filas de encabezado coloreadas (variante C). Sin campo de registro todavía.
   - Aceptación:
-    - [x] Reemplaza sin pedir confirmación por alumno; fecha de captura = hoy.
-    - [x] Una dudosa no confirmada no se aplica.
-    - [x] Alumnos fuera del archivo intactos; décimas y exámenes sin cambios.
-    - [x] Deshacer deja los valores exactamente como estaban; un error a medias no deja nada guardado.
-  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_importar_tareas.py tests/test_tareas.py -q`
-  - Archivos: `core/services.py`, `core/repository.py`, `tests/test_importar_tareas.py`
+    - [ ] El selector tiene cuatro modos y F2 los recorre en ciclo; los otros tres modos no cambian.
+    - [ ] En «Proyecto» la tabla muestra «Equipo», agrupa por número con encabezados «Equipo N · M alumnos», tonos alternados y los sin equipo al final.
+    - [ ] Los encabezados no reaccionan a clic, doble clic ni selección; el filtro y «Mostrar oyentes» los ocultan si el equipo queda vacío.
+    - [ ] Ordenar por otra columna ordena dentro de cada equipo.
+    - [ ] Colores solo desde `tema.py`; se ve bien en claro y oscuro.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_equipos.py tests/test_ui_curso.py -q` y captura en claro y oscuro
+  - Archivos: `ui_desktop/tema.py`, `ui_desktop/tabla.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`, `tests/test_ui_curso.py`
   - Dependencias: T2
 
-## Fase 3: Pantalla Curso
-
-- [x] **T4: Diálogo con vista previa y botón** (M)
-  - Descripción: botón «⬆ Importar tareas» junto a «Exportar»; `DialogoImportarTareas` elige archivo, columna, muestra el resumen, la tabla «antes → después» y casillas de dudosas; aplicar.
+- [ ] **T4: Formar equipos** (M)
+  - Descripción: botón «Formar equipos» (activar/desactivar), selección múltiple con Ctrl/Mayús sin cargar al alumno, barra «N seleccionados», «Crear equipo con N alumnos», rechazo si alguien ya tiene equipo, franja y «Deshacer».
   - Aceptación:
-    - [x] Cambiar la columna actualiza la vista previa; cancelar no guarda nada.
-    - [x] «Aplicar N cambios» guarda y recarga la tabla del curso.
-    - [x] Archivo inválido muestra el mensaje sin cerrar la app.
-    - [x] Colores solo desde `tema.py`.
-  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_curso.py -q`
-  - Archivos: `ui_desktop/dialogos_tareas.py`, `ui_desktop/vista_curso.py`, `tests/test_ui_curso.py`
+    - [ ] Con el modo activo se pueden seleccionar varios alumnos; el clic ya no carga al alumno.
+    - [ ] «Crear» asigna el siguiente número, resalta a los miembros y la tabla se reagrupa; deshabilitado sin selección; 1 alumno forma equipo de 1.
+    - [ ] Incluir a alguien con equipo rechaza, dice quién y en cuál, y no cambia nada.
+    - [ ] «Deshacer» elimina el equipo recién creado; desactivar el modo o cambiar de modo limpia la selección.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_equipos.py -q`
+  - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`
   - Dependencias: T3
 
-- [x] **T5: Deshacer importación, docs y versión** (S)
-  - Descripción: franja «✓ Tareas importadas: N actualizadas, M omitidas» con «Deshacer importación»; `CLAUDE.md` (pantalla), `README.md`, versión 1.3.0.
+- [ ] **T5: Separar con clic derecho** (S)
+  - Descripción: menú contextual «Separar del equipo N» sobre filas con equipo (una o varias seleccionadas), solo con «Formar equipos» activo, con deshacer.
   - Aceptación:
-    - [x] Deshacer restaura la tabla; otra captura o salir de la pantalla la deshabilita.
-    - [x] Documentación coherente con R15.
-  - Verificación: suite completa; `scripts\construir_exe.ps1`.
-  - Archivos: `ui_desktop/vista_curso.py`, `CLAUDE.md`, `README.md`, `core/version.py`, `tests/test_ui_curso.py`
+    - [ ] Clic derecho en un miembro ofrece «Separar del equipo N» y lo deja sin equipo; con varias seleccionadas separa a todas.
+    - [ ] Sin equipo o en un encabezado no hay menú; si se separa a todos el equipo desaparece y su número no se reutiliza.
+    - [ ] «Deshacer» devuelve a los miembros a su equipo.
+  - Verificación: `.venv\Scripts\python.exe -m pytest tests/test_ui_equipos.py -q`
+  - Archivos: `ui_desktop/vista_curso.py`, `tests/test_ui_equipos.py`
   - Dependencias: T4
 
-### Checkpoint 2: Completo
-- [x] Suite completa en verde (371 pasadas, 3 omitidas); ejecutable 1.3.0 generado.
-- [x] Flujo manual con las muestras reales: elegir columna, revisar dudosas, aplicar, deshacer.
-- [x] Listo para revisión y commit.
+### Checkpoint 2: Sección «Proyecto»
+- [ ] Suite completa en verde.
+- [ ] Flujo manual: formar equipos, ver los colores en claro y oscuro, separar, deshacer, F2 en cuatro modos.
+
+## Fase 3: Cierre
+
+- [ ] **T6: Documentación y versión** (S)
+  - Descripción: `CLAUDE.md` (interfaz, paleta, F2 de cuatro modos), `README.md`, versión 1.4.0 y ejecutable.
+  - Aceptación:
+    - [ ] Documentación coherente con R16 y con lo construido.
+    - [ ] Suite completa en verde; `scripts\construir_exe.ps1` genera el ejecutable.
+  - Verificación: suite completa y `scripts\construir_exe.ps1`
+  - Archivos: `CLAUDE.md`, `README.md`, `core/version.py`
+  - Dependencias: T5
+
+### Checkpoint 3: Listo
+- [ ] Listo para revisión y commit.

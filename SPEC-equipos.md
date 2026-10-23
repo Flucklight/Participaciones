@@ -28,7 +28,12 @@ Decisiones ya tomadas con la persona:
 9. Las calificaciones **no se tocan** al formar o separar equipos (eso es de `proyecto`).
 10. **Eliminar un curso** borra sus equipos; el diálogo no necesita contarlos (no son calificaciones).
 11. Sin migración manual: las tablas nuevas se crean solas al abrir una base existente (`CREATE TABLE IF NOT EXISTS`).
-12. **Color por equipo:** en modo «Proyecto» los equipos se distinguen con **dos colores de fondo que se alternan** de un equipo al siguiente **por orden de aparición** (no por paridad del número, para que dos equipos contiguos siempre difieran aunque haya huecos de numeración). Los alumnos sin equipo no llevan color. Los dos tonos son pares (claro, oscuro) en `tema.py`, con texto legible en ambos modos y sin chocar con la fila resaltada ni con la selección. **El diseño exacto se elige con pruebas visuales antes de implementarlo** (ver «Diseño del color de equipos»).
+12. **Color por equipo:** en modo «Proyecto» los equipos se distinguen con **dos colores de fondo que se alternan** de un equipo al siguiente **por orden de aparición** (no por paridad del número, para que dos equipos contiguos siempre difieran aunque haya huecos de numeración). Los alumnos sin equipo no llevan color. Los dos tonos son pares (claro, oscuro) en `tema.py`, con texto legible en ambos modos y sin chocar con la fila resaltada ni con la selección. **Diseño elegido por la persona tras las pruebas visuales: variante C** (encabezado de grupo; ver «Diseño del color de equipos»), con estas reglas:
+   - Antes de cada equipo va una **fila de encabezado** «Equipo 2 · 3 alumnos» (o «1 alumno») con el tono fuerte; las filas de sus miembros llevan el tono suave del mismo color.
+   - El encabezado **no es un alumno**: no se puede seleccionar, no carga nada al hacer clic, no abre historial con doble clic, no cuenta en el resumen ni en la selección múltiple y no tiene menú contextual.
+   - Ordenar por otra columna (clic en el encabezado de columna) ordena **dentro de cada equipo**; los equipos conservan su orden por número.
+   - Si el filtro de texto o «Mostrar oyentes» deja a un equipo sin filas visibles, su encabezado se oculta; el número de alumnos del encabezado cuenta solo los visibles.
+   - Los alumnos sin equipo van al final, **sin encabezado** y sin color.
 
 ## Modelo de datos (cambio propuesto)
 
@@ -67,7 +72,7 @@ Con «Formar equipos» activo:
 - En `equipos` el modo «Proyecto» **no tiene campo de registro** (llega con `proyecto`): muestra el botón «Formar equipos», la barra de selección y la tabla agrupada, con una franja de ayuda («Activa «Formar equipos» para armar los equipos del proyecto»).
 - Colores solo desde `ui_desktop/tema.py` (nuevo par `COLOR_PROYECTO` y su hover).
 
-## Diseño del color de equipos (por decidir con pruebas)
+## Diseño del color de equipos (elegida la variante C tras las pruebas)
 
 Se prepararán capturas de la tabla (modo claro y oscuro, datos ficticios) con estas variantes para que la persona elija:
 
