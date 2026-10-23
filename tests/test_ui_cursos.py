@@ -117,3 +117,27 @@ def test_navegacion_entre_secciones(ui):
     app.update()
     app.mostrar("cursos")
     app.update()
+
+
+def test_eliminar_curso_con_calificaciones_lo_dice_y_exige_confirmar(ui):
+    app, srv, vista = ui.app, ui.srv, ui.vista
+    curso = srv.crear_curso("2027-I", "Redes", "3001")
+    alumno = srv.crear_alumno_en_curso(curso.id, "Oyente Uno")
+    parcial = srv.crear_examen(curso.id, "Parcial 1")
+    srv.crear_examen(curso.id, "Final")
+    srv.registrar_calificacion_para_alumno(curso.id, parcial.id, alumno.id, 90)  # sin participaciones
+    vista.recargar()
+    vista._seleccionar(curso.id)
+    vistos = []
+
+    def mirar():
+        d = _dialogo(app)
+        vistos.append((d._detalle.cget("text"), str(d._ok.cget("state"))))
+        d.cancelar()
+
+    app.after(300, mirar)
+    vista.eliminar_seleccionado()
+    texto, estado = vistos[0]
+    assert "2 exámenes" in texto and "1 calificación" in texto
+    assert estado == "disabled"  # hay calificaciones: exige escribir ELIMINAR
+    assert curso.id in {c.id for c in srv.listar_cursos(True)}  # cancelado: sigue ahí

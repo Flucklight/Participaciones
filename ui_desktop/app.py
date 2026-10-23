@@ -25,6 +25,7 @@ class App(ctk.CTk):
         super().__init__()
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
+        tema.aplicar_a_customtkinter()
 
         self.ruta_db = Path(ruta_db)
         self.carpeta_respaldos = self.ruta_db.parent / "backups"
@@ -54,7 +55,7 @@ class App(ctk.CTk):
         for clave, etiqueta in SECCIONES:
             boton = ctk.CTkButton(
                 panel, text=etiqueta, anchor="w", height=40, corner_radius=8,
-                font=tema.fuente(14), fg_color="transparent", text_color=("gray15", "gray90"),
+                font=tema.fuente(14), fg_color="transparent", text_color=tema.COLOR_TEXTO,
                 hover_color=tema.COLOR_NAV_ACTIVO, command=lambda c=clave: self.mostrar(c),
             )
             boton.pack(fill="x", padx=12, pady=2)

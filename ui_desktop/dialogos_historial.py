@@ -8,7 +8,7 @@ from typing import Callable
 import customtkinter as ctk
 
 from core.errores import ErrorDominio
-from core.models import Alumno, Participacion
+from core.models import Alumno, Calificacion, Participacion
 
 from . import tema
 from .dialogos import Dialogo
@@ -108,3 +108,45 @@ class DialogoEditarAlumno(_DialogoCampos):
             self._error.configure(text=str(error))
             return
         self.cerrar(alumno)
+
+
+class DialogoCalificacion(_DialogoCampos):
+    """Capturar o corregir la calificación de un examen (sin tope; fecha libre).
+
+    `guardar(datos)` recibe {"puntos": float, "fecha": date}; puede lanzar ErrorDominio.
+    """
+
+    def __init__(self, master, nombre_examen: str, guardar: Callable[[dict], object],
+                 calificacion: Calificacion | None = None) -> None:
+        super().__init__(master, f"Calificación: {nombre_examen}")
+        self._guardar = guardar
+        self._puntos = self._campo(
+            "Calificación (sin tope: se aceptan puntos extra)",
+            formatear_decimas(calificacion.puntos) if calificacion else "", "Ej. 8.5 o 42",
+        )
+        self._fecha = self._campo(
+            "Fecha (dd/mm/aaaa)",
+            formatear_fecha(calificacion.fecha if calificacion else date.today()),
+        )
+        self._pie("Guardar")
+
+    def al_mostrar(self) -> None:
+        self._puntos.focus_set()
+        self._puntos.select_range(0, "end")
+
+    def _aceptar(self) -> None:
+        try:
+            try:
+                puntos = leer_decimas(self._puntos.get())
+            except ValueError:
+                raise ErrorDominio("La calificación debe ser un número (por ejemplo 8.5 o 42).") from None
+            try:
+                fecha = leer_fecha(self._fecha.get())
+            except ValueError:
+                raise ErrorDominio("La fecha debe tener el formato dd/mm/aaaa.") from None
+            resultado = self._guardar({"puntos": puntos, "fecha": fecha})
+        except ErrorDominio as error:
+            self._error.configure(text=str(error))
+            return
+        self.cerrar(resultado)
+

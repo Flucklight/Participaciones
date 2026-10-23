@@ -7,10 +7,10 @@ from tkinter import messagebox, ttk
 import customtkinter as ctk
 
 from core.errores import ErrorDominio
-from core.models import Alumno, Curso, LineaHistorial, TipoInscripcion
+from core.models import Alumno, Curso, LineaExamen, LineaHistorial, TipoInscripcion
 
 from . import tema
-from .dialogos_historial import DialogoEditarAlumno, DialogoParticipacion
+from .dialogos_historial import DialogoCalificacion, DialogoEditarAlumno, DialogoParticipacion
 from .formato import formatear_decimas, formatear_fecha, titulo_legible
 from .tabla import ESTILO, configurar_estilo
 
@@ -20,6 +20,11 @@ COLUMNAS = (
     ("efecto", "Efecto real", 100, "e"),
     ("total", "Total", 90, "e"),
     ("nota", "Nota", 360, "w"),
+)
+COLUMNAS_EXAMENES = (
+    ("examen", "Examen", 360, "w"),
+    ("puntos", "Calificación", 120, "e"),
+    ("fecha", "Fecha", 110, "center"),
 )
 
 
@@ -32,6 +37,7 @@ class VistaHistorial(ctk.CTkFrame):
         self._cursos: list[Curso] = self._servicio.cursos_de_alumno(alumno_id)
         self._curso_id = curso_id if any(c.id == curso_id for c in self._cursos) else self._cursos[0].id
         self._lineas: dict[int, LineaHistorial] = {}
+        self._lineas_examen: dict[int, LineaExamen] = {}
         self._colores = configurar_estilo()
 
         self._construir_encabezado()
@@ -39,6 +45,14 @@ class VistaHistorial(ctk.CTkFrame):
         self._construir_selector()
         self._construir_tabla()
         self._construir_acciones()
+        self._construir_examenes()
+        # Lo de abajo se empaqueta primero (de abajo hacia arriba) y la tabla de participaciones
+        # al final: así, en una ventana baja, es la tabla la que cede espacio y no los botones.
+        self._fila_examenes.pack(side="bottom", fill="x", padx=24, pady=(0, 18))
+        self._marco_examenes.pack(side="bottom", fill="x", padx=24, pady=(0, 8))
+        self._cab_examenes.pack(side="bottom", fill="x", padx=24, pady=(4, 6))
+        self._fila_acciones.pack(side="bottom", fill="x", padx=24, pady=(0, 10))
+        self._marco_tabla.pack(fill="both", expand=True, padx=24, pady=(0, 8))
         self.recargar()
 
     # ====================== construcción ======================
@@ -47,7 +61,7 @@ class VistaHistorial(ctk.CTkFrame):
         cab.pack(fill="x", padx=24, pady=(16, 0))
         ctk.CTkButton(
             cab, text="←  Curso", width=90, height=28, fg_color="transparent",
-            text_color=tema.COLOR_ACENTO, hover_color=tema.COLOR_NAV_ACTIVO,
+            text_color=tema.COLOR_ACENTO_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
             command=lambda: self._app.abrir_curso(self._curso_id),
         ).pack(anchor="w")
         fila = ctk.CTkFrame(cab, fg_color="transparent")
@@ -68,7 +82,7 @@ class VistaHistorial(ctk.CTkFrame):
         ctk.CTkButton(
             acciones, text="✎  Editar alumno", height=34, command=self.editar_alumno,
             fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
-            text_color=("gray20", "gray90"), hover_color=tema.COLOR_NAV_ACTIVO,
+            text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
         ).pack(side="right")
 
     def _construir_tarjetas(self) -> None:
@@ -94,7 +108,7 @@ class VistaHistorial(ctk.CTkFrame):
         self._selector = ctk.CTkOptionMenu(
             fila, values=list(self._etiquetas), width=380, command=self._cambiar_curso,
             fg_color=tema.COLOR_TARJETA, button_color=tema.COLOR_BORDE,
-            text_color=("gray10", "gray95"),
+            text_color=tema.COLOR_TEXTO,
         )
         self._selector.set(next(e for e, i in self._etiquetas.items() if i == self._curso_id))
         self._selector.pack(side="left", padx=10)
@@ -109,10 +123,10 @@ class VistaHistorial(ctk.CTkFrame):
     def _construir_tabla(self) -> None:
         marco = ctk.CTkFrame(self, corner_radius=12, fg_color=tema.COLOR_TARJETA,
                              border_width=1, border_color=tema.COLOR_BORDE)
-        marco.pack(fill="both", expand=True, padx=24, pady=(0, 8))
+        self._marco_tabla = marco
         self._tabla = ttk.Treeview(
             marco, columns=[c[0] for c in COLUMNAS], show="headings", style=ESTILO,
-            selectmode="browse",
+            selectmode="browse", height=5,  # pide poco alto para que quepa la sección Exámenes
         )
         for clave, titulo, ancho, alineacion in COLUMNAS:
             self._tabla.heading(clave, text=titulo, anchor=alineacion)
@@ -130,7 +144,7 @@ class VistaHistorial(ctk.CTkFrame):
 
     def _construir_acciones(self) -> None:
         fila = ctk.CTkFrame(self, fg_color="transparent")
-        fila.pack(fill="x", padx=24, pady=(0, 18))
+        self._fila_acciones = fila
         ctk.CTkButton(
             fila, text="＋  Agregar participación", height=36, command=self.agregar_participacion,
             fg_color=tema.COLOR_ACENTO, hover_color=tema.COLOR_ACENTO_HOVER,
@@ -138,7 +152,7 @@ class VistaHistorial(ctk.CTkFrame):
         self._boton_editar = ctk.CTkButton(
             fila, text="✎  Editar", width=100, height=36, command=self.editar_participacion,
             fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
-            text_color=("gray20", "gray90"), hover_color=tema.COLOR_NAV_ACTIVO,
+            text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
         )
         self._boton_editar.pack(side="left", padx=8)
         self._boton_borrar = ctk.CTkButton(
@@ -147,6 +161,48 @@ class VistaHistorial(ctk.CTkFrame):
         )
         self._boton_borrar.pack(side="left")
         self._actualizar_botones()
+
+    def _construir_examenes(self) -> None:
+        """Sección «Exámenes»: una fila por examen del curso, con su calificación."""
+        cabecera = ctk.CTkFrame(self, fg_color="transparent")
+        self._cab_examenes = cabecera
+        ctk.CTkLabel(cabecera, text="Exámenes", font=tema.fuente(15, "bold")).pack(side="left")
+        self._aviso_examenes = ctk.CTkLabel(cabecera, text="", text_color=tema.COLOR_TEXTO_SUAVE)
+        self._aviso_examenes.pack(side="left", padx=12)
+
+        marco = ctk.CTkFrame(self, corner_radius=12, fg_color=tema.COLOR_TARJETA,
+                             border_width=1, border_color=tema.COLOR_BORDE)
+        self._marco_examenes = marco
+        self._tabla_examenes = ttk.Treeview(
+            marco, columns=[c[0] for c in COLUMNAS_EXAMENES], show="headings", style=ESTILO,
+            selectmode="browse", height=3,
+        )
+        for clave, titulo, ancho, alineacion in COLUMNAS_EXAMENES:
+            self._tabla_examenes.heading(clave, text=titulo, anchor=alineacion)
+            self._tabla_examenes.column(clave, width=ancho, anchor=alineacion,
+                                        stretch=(clave == "examen"), minwidth=60)
+        barra = ctk.CTkScrollbar(marco, command=self._tabla_examenes.yview, height=40)  # alto mínimo pedido
+        self._tabla_examenes.configure(yscrollcommand=barra.set)
+        self._tabla_examenes.pack(side="left", fill="x", expand=True, padx=(8, 0), pady=8)
+        barra.pack(side="right", fill="y", padx=(0, 4), pady=8)
+        self._tabla_examenes.tag_configure("sin", foreground=self._colores["suave"])
+        self._tabla_examenes.bind("<<TreeviewSelect>>", lambda _e: self._actualizar_botones_examenes())
+        self._tabla_examenes.bind("<Double-1>", lambda _e: self.editar_calificacion())
+        self._tabla_examenes.bind("<Delete>", lambda _e: self.eliminar_calificacion())
+
+        fila = ctk.CTkFrame(self, fg_color="transparent")
+        self._fila_examenes = fila
+        self._boton_calificar = ctk.CTkButton(
+            fila, text="✎  Calificar / editar", width=160, height=36, command=self.editar_calificacion,
+            fg_color=tema.COLOR_EXAMEN, hover_color=tema.COLOR_EXAMEN_HOVER,
+        )
+        self._boton_calificar.pack(side="left")
+        self._boton_quitar = ctk.CTkButton(
+            fila, text="🗑  Quitar calificación", width=170, height=36, command=self.eliminar_calificacion,
+            fg_color=tema.COLOR_PELIGRO, hover_color=tema.COLOR_PELIGRO_HOVER,
+        )
+        self._boton_quitar.pack(side="left", padx=8)
+        self._actualizar_botones_examenes()
 
     # ====================== datos ======================
     @property
@@ -192,6 +248,26 @@ class VistaHistorial(ctk.CTkFrame):
             self._tabla.selection_set(str(resaltar))
             self._tabla.see(str(resaltar))
         self._actualizar_botones()
+        self._recargar_examenes()
+
+    def _recargar_examenes(self, resaltar: int | None = None) -> None:
+        lineas = self._servicio.historial_examenes(self._curso_id, self._alumno_id)
+        self._lineas_examen = {l.examen.id: l for l in lineas}
+        self._tabla_examenes.delete(*self._tabla_examenes.get_children())
+        for l in lineas:
+            c = l.calificacion
+            self._tabla_examenes.insert(
+                "", "end", iid=str(l.examen.id), tags=() if c else ("sin",),
+                values=(l.examen.nombre, formatear_decimas(l.puntos),
+                        formatear_fecha(c.fecha) if c else "—"),
+            )
+        self._aviso_examenes.configure(
+            text="" if lineas else "Este curso no tiene exámenes. Créalos desde la pantalla del curso."
+        )
+        if resaltar is not None and self._tabla_examenes.exists(str(resaltar)):
+            self._tabla_examenes.selection_set(str(resaltar))
+            self._tabla_examenes.see(str(resaltar))
+        self._actualizar_botones_examenes()
 
     def _cambiar_curso(self, etiqueta: str) -> None:
         self._curso_id = self._etiquetas[etiqueta]
@@ -248,6 +324,47 @@ class VistaHistorial(ctk.CTkFrame):
         except ErrorDominio as error:
             messagebox.showerror("No se pudo eliminar", str(error), parent=self)
         self.recargar()
+
+    # ====================== exámenes ======================
+    def _examen_seleccionado(self) -> LineaExamen | None:
+        seleccion = self._tabla_examenes.selection()
+        return self._lineas_examen.get(int(seleccion[0])) if seleccion else None
+
+    def _actualizar_botones_examenes(self) -> None:
+        linea = self._examen_seleccionado()
+        self._boton_calificar.configure(state="normal" if linea else "disabled")
+        self._boton_quitar.configure(state="normal" if linea and linea.calificacion else "disabled")
+
+    def editar_calificacion(self) -> None:
+        linea = self._examen_seleccionado()
+        if linea is None:
+            return
+        examen = linea.examen
+
+        def guardar(d: dict):
+            return self._servicio.establecer_calificacion(
+                self._curso_id, examen.id, self._alumno_id, d["puntos"], d["fecha"]
+            )
+
+        if DialogoCalificacion(self, examen.nombre, guardar, linea.calificacion).mostrar():
+            self._recargar_examenes(resaltar=examen.id)
+
+    def eliminar_calificacion(self) -> None:
+        linea = self._examen_seleccionado()
+        if linea is None or linea.calificacion is None:
+            return
+        if not messagebox.askyesno(
+            "Quitar calificación",
+            f"¿Quitar la calificación de {formatear_decimas(linea.puntos)} en «{linea.examen.nombre}»?"
+            "\n\nEl examen volverá a valer 0.",
+            parent=self,
+        ):
+            return
+        try:
+            self._servicio.eliminar_calificacion(linea.examen.id, self._alumno_id)
+        except ErrorDominio as error:
+            messagebox.showerror("No se pudo quitar", str(error), parent=self)
+        self._recargar_examenes(resaltar=linea.examen.id)
 
     # ====================== alumno ======================
     def editar_alumno(self) -> None:

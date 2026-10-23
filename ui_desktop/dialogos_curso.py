@@ -7,7 +7,7 @@ from typing import Callable
 import customtkinter as ctk
 
 from core.errores import ErrorDominio
-from core.models import Alumno, TipoInscripcion
+from core.models import Alumno, Examen, TipoInscripcion
 from core.normalizacion import es_numero_de_cuenta, limpiar_nombre
 
 from . import tema
@@ -34,14 +34,14 @@ class DialogoElegirAlumno(Dialogo):
             etiqueta = "  (oyente)" if tipos.get(alumno.id) == TipoInscripcion.OYENTE else ""
             ctk.CTkButton(
                 zona, text=f"{alumno.nombre_completo}{etiqueta}\n{cuenta}", anchor="w", height=42,
-                fg_color="transparent", text_color=("gray10", "gray95"),
+                fg_color="transparent", text_color=tema.COLOR_TEXTO,
                 hover_color=tema.COLOR_NAV_ACTIVO, border_width=1, border_color=tema.COLOR_BORDE,
                 command=lambda a=alumno: self.cerrar(a),
             ).pack(fill="x", pady=3)
         fila = ctk.CTkFrame(self.cuerpo, fg_color="transparent")
         fila.pack(fill="x", pady=(14, 0))
         ctk.CTkButton(fila, text="Cancelar", width=100, fg_color="transparent", border_width=1,
-                      border_color=tema.COLOR_BORDE, text_color=("gray20", "gray90"),
+                      border_color=tema.COLOR_BORDE, text_color=tema.COLOR_TEXTO,
                       hover_color=tema.COLOR_NAV_ACTIVO, command=self.cancelar).pack(side="right")
 
 
@@ -60,6 +60,7 @@ class DialogoAlumnoNuevo(Dialogo):
         consulta: str = "",
         resumen_decimas: str | None = None,
         candidatos: list[Alumno] | None = None,
+        resumen_registro: str | None = None,
     ) -> None:
         super().__init__(master, "Alumno no encontrado" if consulta else "Agregar alumno", ancho=500)
         self._guardar = guardar
@@ -72,7 +73,8 @@ class DialogoAlumnoNuevo(Dialogo):
                 self.cuerpo, anchor="w", justify="left", wraplength=450,
                 text_color=tema.COLOR_TEXTO_SUAVE,
                 text=f"«{consulta}» no está inscrito en este curso. ¿Quieres agregarlo?"
-                     + (f"\nSe registrarán {resumen_decimas} décimas." if resumen_decimas else ""),
+                     + (f"\nSe registrarán {resumen_decimas} décimas." if resumen_decimas else "")
+                     + (f"\nSe registrará {resumen_registro}." if resumen_registro else ""),
             ).pack(fill="x", pady=(6, 8))
         else:
             ctk.CTkLabel(self.cuerpo, text="Agregar alumno al curso", font=tema.fuente(18, "bold")
@@ -111,7 +113,8 @@ class DialogoAlumnoNuevo(Dialogo):
         self._error = ctk.CTkLabel(self.cuerpo, text="", text_color=tema.COLOR_PELIGRO,
                                    wraplength=450, justify="left", anchor="w")
         self._error.pack(fill="x", pady=(8, 0))
-        self.botones("Agregar y registrar" if resumen_decimas else "Agregar", self._aceptar)
+        registra = resumen_decimas or resumen_registro
+        self.botones("Agregar y registrar" if registra else "Agregar", self._aceptar)
 
     def _campo(self, etiqueta: str) -> ctk.CTkEntry:
         ctk.CTkLabel(self.cuerpo, text=etiqueta, anchor="w", font=tema.fuente(12),
@@ -194,3 +197,40 @@ class DialogoExportar(Dialogo):
             "oyentes": bool(self._oyentes.get()),
             "detalle": excel and bool(self._detalle.get()),
         })
+
+
+class DialogoExamen(Dialogo):
+    """Crea o renombra un examen del curso.
+
+    `guardar(nombre)` puede lanzar ErrorDominio y devuelve el `Examen`.
+    """
+
+    def __init__(self, master, guardar: Callable[[str], Examen], examen: Examen | None = None) -> None:
+        titulo = "Renombrar examen" if examen else "Nuevo examen"
+        super().__init__(master, titulo)
+        self._guardar = guardar
+        ctk.CTkLabel(self.cuerpo, text=titulo, font=tema.fuente(18, "bold")
+                     ).pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(self.cuerpo, text="Nombre", anchor="w", font=tema.fuente(12),
+                     text_color=tema.COLOR_TEXTO_SUAVE).pack(fill="x", pady=(4, 2))
+        self._nombre = ctk.CTkEntry(self.cuerpo, height=34, placeholder_text="Ej. Parcial 1")
+        self._nombre.pack(fill="x")
+        if examen:
+            self._nombre.insert(0, examen.nombre)
+        self._nombre.bind("<Return>", lambda _e: self._aceptar())
+        self._error = ctk.CTkLabel(self.cuerpo, text="", text_color=tema.COLOR_PELIGRO,
+                                   wraplength=390, justify="left", anchor="w")
+        self._error.pack(fill="x", pady=(8, 0))
+        self.botones("Guardar" if examen else "Crear", self._aceptar)
+
+    def al_mostrar(self) -> None:
+        self._nombre.focus_set()
+        self._nombre.select_range(0, "end")
+
+    def _aceptar(self) -> None:
+        try:
+            examen = self._guardar(self._nombre.get())
+        except ErrorDominio as error:
+            self._error.configure(text=str(error))
+            return
+        self.cerrar(examen)

@@ -23,11 +23,14 @@ alumno(id PK, num_cuenta UNIQUE NULL, nombre_completo, nombre_norm)
 curso(id, ciclo, carrera, materia, grupo, archivado)   -- único por ciclo+materia+grupo
 inscripcion(curso_id, alumno_id, tipo: 'regular' | 'oyente')
 participacion(id, curso_id, alumno_id, decimas, fecha, nota)
+examen(id, curso_id, nombre, nombre_norm)               -- único por curso+nombre; sin puntaje máximo
+calificacion(examen_id, alumno_id, puntos, fecha)       -- una por alumno y examen
 ```
 
 - El nombre se guarda **completo en un solo campo**, tal como viene en la lista de inscripción (`APELLIDO_PATERNO APELLIDO_MATERNO NOMBRES`). No se separan apellidos porque los compuestos (`DE LA PAZ`) no se pueden dividir de forma confiable.
 - Las participaciones son **eventos con fecha**; el total de un alumno se calcula sumándolas.
 - Los **oyentes** no tienen número de cuenta hasta que aparecen en una lista de inscripción.
+- Los **exámenes** son independientes de las décimas: una calificación por alumno y examen, sin tope (se aceptan puntos extra). Un examen sin capturar vale 0. El **promedio de exámenes** es la media simple de todos los exámenes del curso y se calcula en `core/promedio.py`.
 
 ## Pantallas
 
@@ -57,8 +60,10 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 - Todo el flujo es operable con teclado.
 - Doble clic en un alumno abre su historial.
 
+**Exámenes.** El selector `[Participación | Examen]` (tecla **F2**) cambia el registro rápido a calificaciones: eliges el examen (o creas uno con «＋ Nuevo»; «⋯» renombra o elimina), escribes cuenta o nombre y la calificación. Si el alumno ya tenía nota, la app avisa «Ya tiene X; se cambiará a Y» y pide confirmar; «Deshacer» la restaura. La tabla gana una columna «Examen - <nombre>» por examen.
+
 ### Exportar
-Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Participaciones, Última, y hoja opcional «Participaciones» con el detalle) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
+Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Participaciones, Última, y hoja opcional «Participaciones» con el detalle) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
 
 ### Historial de un alumno
 - Tarjetas de resumen (total, número de registros, última participación).
@@ -66,6 +71,7 @@ Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, D�
 - Selector de curso (un alumno puede estar en varios).
 - Tabla de participaciones con fecha, décimas y nota; cada fila se puede editar o borrar.
 - Agregar participaciones con fecha anterior.
+- Sección **Exámenes**: calificación de cada examen del curso (0 si no se ha capturado); se puede calificar, corregir o quitar.
 - Convertir oyente en regular.
 
 ## Importación de listas

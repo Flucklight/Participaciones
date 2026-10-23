@@ -145,7 +145,7 @@ class VistaCursos(ctk.CTkFrame):
         titulo.pack(side="left", fill="x", expand=True, anchor="n")
         menu = ctk.CTkButton(
             encabezado, text="⋯", width=30, height=28, fg_color="transparent",
-            text_color=("gray20", "gray90"), hover_color=tema.COLOR_NAV_ACTIVO,
+            text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
             font=tema.fuente(16, "bold"),
         )
         menu.configure(command=lambda c=curso, b=menu: self._abrir_menu(c, b))
@@ -164,7 +164,7 @@ class VistaCursos(ctk.CTkFrame):
         pie.pack(side="bottom", fill="x", padx=14, pady=(0, 12))
         alumnos = self._servicio.contar_alumnos(curso.id)
         ctk.CTkLabel(pie, text=f"{alumnos} alumnos", font=tema.fuente(12, "bold"),
-                     text_color=tema.COLOR_ACENTO).pack(side="left")
+                     text_color=tema.COLOR_ACENTO_TEXTO).pack(side="left")
         if curso.archivado:
             ctk.CTkLabel(pie, text="ARCHIVADO", font=tema.fuente(10, "bold"), corner_radius=6,
                          fg_color=tema.COLOR_BORDE, text_color=tema.COLOR_TEXTO_SUAVE,
@@ -252,7 +252,10 @@ class VistaCursos(ctk.CTkFrame):
 
     def eliminar(self, curso: Curso) -> None:
         alumnos, participaciones = self._servicio.resumen_eliminacion(curso.id)
-        if DialogoEliminarCurso(self, curso, alumnos, participaciones).mostrar():
+        examenes, calificaciones = self._servicio.resumen_eliminacion_examenes(curso.id)
+        if DialogoEliminarCurso(
+            self, curso, alumnos, participaciones, examenes, calificaciones
+        ).mostrar():
             try:
                 self._servicio.eliminar_curso(curso.id)
             except ErrorDominio as error:

@@ -29,11 +29,13 @@ alumno(id PK, num_cuenta UNIQUE NULL, nombre_completo, nombre_norm)  -- nombre_n
 curso(id, ciclo, carrera, materia, grupo, archivado)  -- único por ciclo+materia+grupo
 inscripcion(curso_id, alumno_id, tipo 'regular'|'oyente')
 participacion(id, curso_id, alumno_id, decimas, fecha, nota)
+examen(id, curso_id, nombre, nombre_norm)  -- único por curso+nombre_norm; sin puntaje máximo
+calificacion(examen_id, alumno_id, puntos, fecha)  -- una por alumno y examen (PK compuesta)
 ```
 
 ## Reglas de negocio
 
-1. **CRUD de cursos:** crear, importar, ver, editar, **archivar** y **eliminar**. Archivar es reversible; eliminar es definitivo y exige confirmación explícita indicando cuántas participaciones se perderán.
+1. **CRUD de cursos:** crear, importar, ver, editar, **archivar** y **eliminar**. Archivar es reversible; eliminar es definitivo y exige confirmación explícita indicando cuántas participaciones (y, si las hay, exámenes y calificaciones) se perderán.
 2. **Nombre completo en un solo campo** (`nombre_completo`), tal como viene en la lista. Nunca separar apellidos.
 3. **Normalización para comparar y buscar:** ignorar mayúsculas, acentos y espacios repetidos o sobrantes. Se guarda en mayúsculas y con espacios limpiados.
 4. **Participaciones como eventos con fecha.** El total de un alumno se calcula a partir de sus participaciones; nunca guardar un total acumulado.
@@ -59,6 +61,7 @@ participacion(id, curso_id, alumno_id, decimas, fecha, nota)
 10. **Exportación** (`exporters/curso.py`, sin dependencia de la UI): `.xlsx` (hoja «Resumen» + hoja opcional «Participaciones» con efecto real y total acumulado) o `.csv` (solo resumen, UTF-8 con BOM).
    - Los **oyentes se excluyen por defecto**; se pueden incluir (agrega la columna «Tipo»).
    - Los totales se exportan como **números**, ya con el mínimo de 0 aplicado (los calcula el servicio); nunca como fórmulas de suma.
+   - Si el curso tiene exámenes, el «Resumen» agrega una columna «Examen - <nombre>» por examen (sin capturar = 0) y «Promedio exámenes» (R13), después de «Décimas», también como números. Sin exámenes las columnas no cambian. La hoja «Participaciones» no incluye exámenes.
    - El número de cuenta se guarda como **texto**; las fechas como fechas reales de Excel.
    - Si el archivo está abierto en Excel o la carpeta no existe, se informa con un mensaje claro (`ErrorDominio`), sin cerrar la app.
 
@@ -67,14 +70,26 @@ participacion(id, curso_id, alumno_id, decimas, fecha, nota)
    - Los archivos incluidos (íconos, etc.) se leen con `rutas.recurso(...)`; deben listarse en `datas` de `participaciones.spec`.
    - Se genera con `scripts/construir_exe.ps1`. La versión vive en `core/version.py` (súbela antes de cada entrega).
 
+12. **Exámenes y calificaciones** (independientes de las décimas; no afectan `total_con_piso`):
+   - Un curso tiene varios exámenes, solo con nombre (único por curso comparado normalizado). **Sin tope máximo**: se aceptan puntos extra.
+   - Una calificación por alumno y examen, `>= 0` (decimales permitidos; negativos rechazados). Capturar otra vez **reemplaza** la anterior, pero antes se advierte («Ya tiene X; se cambiará a Y») y se pide confirmar; el cambio se puede deshacer.
+   - Eliminar un examen exige confirmación indicando cuántas calificaciones se perderán; eliminar un curso borra sus exámenes y calificaciones.
+   - Los oyentes pueden tener calificaciones y se excluyen de exportaciones por defecto, igual que las participaciones.
+13. **Promedio de exámenes** (`core/promedio.py::promedio_examenes`, única fuente): media simple de los puntos sobre **todos** los exámenes del curso; un examen sin calificación vale 0. Sin exámenes no hay promedio. No se guarda; la UI y el exportador no lo recalculan.
+
 ## Interfaz
+- **Paleta** (`ui_desktop/tema.py`, único lugar con colores; las vistas usan sus nombres, nunca hex ni `gray`): azul de la FES Aragón = marca y participaciones; **índigo = modo Examen** (vecino del azul, se distingue sin chocar); verde = éxito, rojo = peligro, ámbar = avisos. Cada color es un par (claro, oscuro); los rellenos llevan texto blanco, el texto de enlaces usa `COLOR_ACENTO_TEXTO`.
 - Panel lateral izquierdo con **Cursos** y **Configuración** (solo esas dos por ahora).
 - **Cursos:** botones Crear / Importar / Eliminar arriba; cards (nombre, grupo, semestre) al centro; menú por card con Editar, Archivar, Eliminar.
-- **Curso:** botones «Exportar» y «Agregar alumno» arriba; registro rápido + tabla de alumnos (No., Cuenta, Nombre, Décimas, Última); clic en una fila = elegir alumno. Operable con teclado; tras guardar, el foco vuelve al campo de alumno. Confirmación como franja no bloqueante, no como diálogo modal.
+- **Curso:** botones «Exportar» y «Agregar alumno» arriba; registro rápido + tabla de alumnos (No., Cuenta, Nombre, Décimas, una columna «Examen - <nombre>» por examen, Última); clic en una fila = elegir alumno. Operable con teclado; tras guardar, el foco vuelve al campo de alumno. Confirmación como franja no bloqueante, no como diálogo modal.
+  - **Selector segmentado `[Participación | Examen]`** en el registro rápido (F2 lo alterna). En modo Examen aparece la lista de exámenes con «＋ Nuevo» y «⋯» (Renombrar…, Eliminar… con confirmación y conteo de calificaciones); el campo pasa a «Calificación» y se conservan el modo y el examen tras guardar. Usa la misma identificación de alumno que las participaciones (cuenta, nombre parcial, varias coincidencias, no existe).
+  - Si el alumno ya tiene calificación en ese examen, la franja avisa «Ya tiene X; se cambiará a Y» con «Reemplazar» / «Cancelar» (no guarda hasta confirmar); «Deshacer» restaura la anterior o elimina la calificación. En modo Examen, elegir a un alumno (clic en fila o sugerencia) trae su calificación actual para corregirla.
+  - No hay columna de promedio en pantalla: el promedio vive en la exportación.
 - **Historial de alumno:** tarjetas de resumen (total, participaciones, última), selector de curso, tabla editable de participaciones y alta con fecha anterior.
   - Se abre con doble clic en una fila de la pantalla Curso; «← Curso» regresa al curso seleccionado.
   - Cada fila muestra fecha, décimas capturadas, **efecto real** y **total acumulado** (los calcula `ServicioParticipaciones.historial_detallado`; la UI no calcula). Las filas donde se aplicó el mínimo de 0 se marcan con ⚑.
   - Editar y eliminar una participación recalculan el total; eliminar pide confirmación.
+  - Sección **«Exámenes»** bajo las participaciones: una fila por examen del curso (Examen, Calificación, Fecha; sin capturar = 0 y «—»), con «Calificar / editar» (calificación ≥ 0 y fecha) y «Quitar calificación» (con confirmación; el examen vuelve a valer 0).
   - Un oyente muestra «Convertir en regular» (conserva el historial); «Editar alumno» corrige nombre y cuenta (la cuenta no puede repetirse).
 - Fuera de alcance por ahora: gráfica de evolución, sección global Alumnos, usuarios/login, sincronización en la nube.
 

@@ -43,7 +43,7 @@ class VistaConfiguracion(ctk.CTkFrame):
                       ).pack(side="left")
         ctk.CTkButton(fila, text="Abrir carpeta de datos", command=self._abrir_carpeta,
                       fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
-                      text_color=("gray20", "gray90"), hover_color=tema.COLOR_NAV_ACTIVO
+                      text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO
                       ).pack(side="left", padx=8)
         ctk.CTkLabel(
             self.contenedor, text_color=tema.COLOR_TEXTO_SUAVE, anchor="w", justify="left",

@@ -16,7 +16,7 @@ def configurar_estilo() -> dict[str, str]:
     oscuro = ctk.get_appearance_mode() == "Dark"
     i = 1 if oscuro else 0
     fondo = tema.COLOR_TARJETA[i]
-    texto = "#E6E8EB" if oscuro else "#1B1D21"
+    texto = tema.COLOR_TEXTO[i]
     estilo = ttk.Style()
     estilo.theme_use("clam")
     estilo.configure(ESTILO, background=fondo, fieldbackground=fondo, foreground=texto,
@@ -29,6 +29,6 @@ def configurar_estilo() -> dict[str, str]:
     estilo.map(f"{ESTILO}.Heading", background=[("active", tema.COLOR_NAV_ACTIVO[i])])
     return {
         "suave": tema.COLOR_TEXTO_SUAVE[i],
-        "reciente": "#2F6B4F" if oscuro else "#C6F0D8",
-        "aviso": "#E0A84C" if oscuro else "#B7791F",
+        "reciente": tema.COLOR_RECIENTE[i],
+        "aviso": tema.COLOR_AVISO[i],
     }

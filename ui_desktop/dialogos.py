@@ -62,7 +62,7 @@ class Dialogo(ctk.CTkToplevel):
         fila.pack(fill="x", pady=(18, 0))
         ctk.CTkButton(
             fila, text="Cancelar", width=100, fg_color="transparent", border_width=1,
-            border_color=tema.COLOR_BORDE, text_color=("gray20", "gray90"),
+            border_color=tema.COLOR_BORDE, text_color=tema.COLOR_TEXTO,
             hover_color=tema.COLOR_NAV_ACTIVO, command=self.cancelar,
         ).pack(side="right", padx=(8, 0))
         boton = ctk.CTkButton(
@@ -124,22 +124,27 @@ class DialogoEliminarCurso(Dialogo):
 
     PALABRA = "ELIMINAR"
 
-    def __init__(self, master, curso: Curso, alumnos: int, participaciones: int) -> None:
+    def __init__(self, master, curso: Curso, alumnos: int, participaciones: int,
+                 examenes: int = 0, calificaciones: int = 0) -> None:
         super().__init__(master, "Eliminar curso")
-        self._exige_palabra = participaciones > 0
+        self._exige_palabra = participaciones > 0 or calificaciones > 0
         ctk.CTkLabel(self.cuerpo, text="Eliminar curso", font=tema.fuente(18, "bold"),
                      text_color=tema.COLOR_PELIGRO).pack(anchor="w")
         ctk.CTkLabel(
             self.cuerpo, text=curso.titulo, wraplength=390, justify="left", anchor="w",
             font=tema.fuente(13, "bold"),
         ).pack(fill="x", pady=(10, 4))
-        ctk.CTkLabel(
+        perdidas = f"{alumnos} inscripciones y {participaciones} participaciones"
+        if examenes:
+            perdidas += (f", {examenes} {'examen' if examenes == 1 else 'exámenes'} con "
+                         f"{calificaciones} {'calificación' if calificaciones == 1 else 'calificaciones'}")
+        self._detalle = ctk.CTkLabel(
             self.cuerpo, wraplength=390, justify="left", anchor="w",
-            text=(f"Se eliminarán {alumnos} inscripciones y {participaciones} participaciones "
-                  "de este curso. Esta acción no se puede deshacer.\n\n"
+            text=(f"Se eliminarán {perdidas} de este curso. Esta acción no se puede deshacer.\n\n"
                   "Los alumnos se conservan en el sistema. Si solo quieres ocultarlo, "
                   "usa Archivar."),
-        ).pack(fill="x")
+        )
+        self._detalle.pack(fill="x")
         self._entrada = None
         if self._exige_palabra:
             ctk.CTkLabel(self.cuerpo, text=f"Escribe {self.PALABRA} para confirmar:",
@@ -192,7 +197,7 @@ class DialogoImportacion(Dialogo):
         if vista.coincidencias_oyentes:
             ctk.CTkLabel(
                 self.cuerpo, anchor="w", justify="left", wraplength=500,
-                font=tema.fuente(13, "bold"), text_color=tema.COLOR_ACENTO,
+                font=tema.fuente(13, "bold"), text_color=tema.COLOR_ACENTO_TEXTO,
                 text="Estos alumnos coinciden por nombre con oyentes sin número de cuenta. "
                      "Marca los que sean la misma persona para conservar su historial:",
             ).pack(fill="x", pady=(14, 4))

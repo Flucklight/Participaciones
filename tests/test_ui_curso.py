@@ -1,5 +1,7 @@
 """Pantalla Curso: registro rápido, casos especiales y tabla (con los diálogos reales)."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from core.models import FilaLista, ListaInscripcion, TipoInscripcion
@@ -361,3 +363,415 @@ def test_exportar_con_error_avisa_y_deja_la_app_en_pie(curso_ui, tmp_path):
     _exportar_con(curso_ui, ruta)
     assert curso_ui.avisos[-1][0] == "error" and "No se pudo guardar" in curso_ui.avisos[-1][1]
     assert _texto_franja(curso_ui.vista).startswith("⚠")
+
+
+# ---------------- modo Examen del registro rápido ----------------
+def _crear_examen_ui(curso_ui, nombre):
+    """Usa el diálogo real de «＋ Nuevo»."""
+    def llenar():
+        d = _dialogo(curso_ui.app)
+        d._nombre.insert(0, nombre)
+        d._aceptar()
+
+    curso_ui.app.after(300, llenar)
+    curso_ui.vista.nuevo_examen()
+
+
+def _modo_examen(curso_ui):
+    curso_ui.vista._selector_modo.set("Examen")
+    curso_ui.vista._cambiar_modo("Examen")
+    curso_ui.app.update()
+
+
+def test_por_defecto_el_registro_es_de_participacion(curso_ui):
+    v = curso_ui.vista
+    assert v._modo == "participacion"
+    assert not v._fila_examen.winfo_ismapped()
+    assert v._boton_guardar.cget("text") == "Guardar"
+
+
+def test_cambiar_a_examen_muestra_la_lista_y_cambia_los_campos(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    assert v._modo == "examen" and v._fila_examen.winfo_ismapped()
+    assert v._boton_guardar.cget("text") == "Registrar examen"
+    assert v._entrada_decimas.cget("placeholder_text") == "Calificación"
+    assert not v._atajos[0].winfo_ismapped()
+    v._selector_modo.set("Participación")
+    v._cambiar_modo("Participación")
+    curso_ui.app.update()
+    assert v._modo == "participacion" and not v._fila_examen.winfo_ismapped()
+    assert v._boton_guardar.cget("text") == "Guardar" and v._atajos[0].winfo_ismapped()
+
+
+def test_sin_examenes_avisa_que_hay_que_crear_uno(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _escribir(v, "100000001", "42")
+    v.guardar()
+    assert _texto_franja(v).startswith("⚠") and "examen" in _texto_franja(v).lower()
+    assert curso_ui.srv.listar_examenes(curso_ui.curso.id) == []
+
+
+def test_nuevo_examen_queda_seleccionado(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+    assert [e.nombre for e in curso_ui.srv.listar_examenes(curso_ui.curso.id)] == ["Parcial 1"]
+    assert v._examen_actual.nombre == "Parcial 1"
+    _crear_examen_ui(curso_ui, "Final")
+    assert v._examen_actual.nombre == "Final"
+
+
+def test_nuevo_examen_duplicado_muestra_el_error_en_el_dialogo(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+
+    def repetir():
+        d = _dialogo(curso_ui.app)
+        d._nombre.insert(0, "parcial 1")
+        d._aceptar()
+        assert "Ya existe" in d._error.cget("text")
+        d.cancelar()
+
+    curso_ui.app.after(300, repetir)
+    v.nuevo_examen()
+    assert len(curso_ui.srv.listar_examenes(curso_ui.curso.id)) == 1
+
+
+def test_registrar_calificacion_por_cuenta_conserva_modo_y_examen(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+    _escribir(v, "100000001", "42")
+    v.guardar()
+    assert "ABREU SOLANO MARCOS" in _texto_franja(v) and "Parcial 1" in _texto_franja(v)
+    assert "42" in _texto_franja(v)
+    alumno = _fila(v, "100000001").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 42
+    assert v._modo == "examen" and v._examen_actual.nombre == "Parcial 1"
+    assert v._entrada_alumno.get() == "" and v._entrada_decimas.get() == ""
+    assert _fila(v, "100000001").total == 0  # las décimas no cambian
+
+
+def test_calificacion_invalida_muestra_error_y_no_guarda(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+    for texto in ("", "abc", "-3"):
+        _escribir(v, "100000001", texto)
+        v.guardar()
+        assert _texto_franja(v).startswith("⚠"), texto
+    assert curso_ui.srv._repo.contar_calificaciones_examen(v._examen_actual.id) == 0
+
+
+def test_examen_ambiguo_pide_elegir_y_califica_al_elegido(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+
+    def elegir():
+        d = _dialogo(curso_ui.app)
+        d.cerrar(next(a for a in v._servicio.buscar_alumnos_en_curso(v.curso.id, "garcia ana")
+                      if a.num_cuenta == "100000004"))
+
+    curso_ui.app.after(300, elegir)
+    _escribir(v, "garcia ana", "9")
+    v.guardar()
+    alumno = _fila(v, "100000004").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 9
+
+
+def test_examen_de_alumno_inexistente_ofrece_crear_oyente_y_califica(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+    curso_ui.app.after(300, lambda: _dialogo(curso_ui.app)._aceptar())
+    _escribir(v, "luis nuevo", "7.5")
+    v.guardar()
+    oyente = next(f for f in v._filas if f.alumno.nombre_completo == "LUIS NUEVO")
+    assert oyente.tipo == TipoInscripcion.OYENTE
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, oyente.alumno.id).puntos == 7.5
+
+
+def test_reemplazo_advierte_y_no_guarda_hasta_confirmar(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+    _escribir(v, "100000001", "35")
+    v.guardar()
+    _escribir(v, "100000001", "42")
+    v.guardar()
+    assert "Ya tiene 35" in _texto_franja(v) and "42" in _texto_franja(v)
+    alumno = _fila(v, "100000001").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 35
+    v.confirmar_reemplazo()
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 42
+    assert v._entrada_alumno.get() == ""
+
+
+def test_cancelar_reemplazo_conserva_la_calificacion(curso_ui):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, "Parcial 1")
+    _escribir(v, "100000001", "35")
+    v.guardar()
+    _escribir(v, "100000001", "42")
+    v.guardar()
+    v.cancelar_reemplazo()
+    alumno = _fila(v, "100000001").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 35
+    assert "cancel" in _texto_franja(v).lower()
+
+
+# ---------------- modo Examen: deshacer, clic en fila, F2 y promedio ----------------
+def _examen_listo(curso_ui, nombre="Parcial 1"):
+    _modo_examen(curso_ui)
+    _crear_examen_ui(curso_ui, nombre)
+    return curso_ui.vista
+
+
+def _calificar(v, cuenta, puntos):
+    _escribir(v, cuenta, puntos)
+    v.guardar()
+
+
+def _clic_en_fila(curso_ui, cuenta):
+    from types import SimpleNamespace
+
+    v = curso_ui.vista
+    curso_ui.app.update()
+    x, y, _w, h = v._tabla.bbox(str(_fila(v, cuenta).alumno.id))
+    v._al_clic_tabla(SimpleNamespace(x=x + 20, y=y + h // 2))
+
+
+def test_deshacer_la_primera_calificacion_la_elimina(curso_ui):
+    v = _examen_listo(curso_ui)
+    _calificar(v, "100000001", "42")
+    assert v._boton_deshacer.winfo_manager()  # el botón Deshacer está visible
+    v.deshacer()
+    alumno = _fila(v, "100000001").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id) is None
+    assert "Se deshizo" in _texto_franja(v)
+    v.deshacer()  # sin nada más que deshacer: no falla
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id) is None
+
+
+def test_deshacer_un_reemplazo_restaura_la_calificacion_anterior(curso_ui):
+    v = _examen_listo(curso_ui)
+    _calificar(v, "100000001", "35")
+    _calificar(v, "100000001", "42")
+    v.confirmar_reemplazo()
+    v.deshacer()
+    alumno = _fila(v, "100000001").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 35
+
+
+def test_deshacer_solo_afecta_al_ultimo_registro(curso_ui):
+    v = _examen_listo(curso_ui)
+    _calificar(v, "100000001", "42")
+    _modo_participacion(curso_ui)
+    _calificar(v, "100000001", "10")  # participación: ahora lo último es esto
+    v.deshacer()
+    assert _fila(v, "100000001").total == 0
+    alumno = _fila(v, "100000001").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 42
+
+
+def _modo_participacion(curso_ui):
+    curso_ui.vista._selector_modo.set("Participación")
+    curso_ui.vista._cambiar_modo("Participación")
+    curso_ui.app.update()
+
+
+def test_clic_en_fila_en_modo_examen_carga_la_calificacion_actual(curso_ui):
+    v = _examen_listo(curso_ui)
+    _calificar(v, "100000002", "35")
+    _clic_en_fila(curso_ui, "100000002")
+    assert v._entrada_alumno.get() == "ACOSTA ORTEGA ELENA"
+    assert v._entrada_decimas.get() == "35"
+    v._entrada_decimas.delete(0, "end")
+    v._entrada_decimas.insert(0, "40")
+    v.guardar()  # modificar: advierte reemplazo
+    assert "Ya tiene 35" in _texto_franja(v)
+    v.confirmar_reemplazo()
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, _fila(v, "100000002").alumno.id).puntos == 40
+
+
+def test_clic_en_fila_sin_calificacion_deja_vacio_el_campo(curso_ui):
+    v = _examen_listo(curso_ui)
+    _clic_en_fila(curso_ui, "100000001")
+    assert v._elegido.num_cuenta == "100000001" and v._entrada_decimas.get() == ""
+
+
+def test_clic_en_fila_en_modo_participacion_no_carga_calificaciones(curso_ui):
+    v = _examen_listo(curso_ui)
+    _calificar(v, "100000002", "35")
+    _modo_participacion(curso_ui)
+    _clic_en_fila(curso_ui, "100000002")
+    assert v._entrada_decimas.get() == ""
+
+
+def test_f2_alterna_el_modo(curso_ui):
+    v = curso_ui.vista
+    for campo in (v._entrada_alumno, v._entrada_decimas):
+        assert campo._entry.bind("<F2>")  # el Entry de tk guarda el enlace
+    assert v._alternar_modo() == "break" and v._modo == "examen"
+    assert v._selector_modo.get() == "Examen"
+    v._alternar_modo()
+    assert v._modo == "participacion" and v._selector_modo.get() == "Participación"
+
+
+def _columnas_examen(v):
+    """[(id de columna, encabezado)] de las columnas de examen de la tabla."""
+    return [(c, v._tabla.heading(c, "text").split("  ")[0]) for c in v._tabla["columns"]
+            if c.startswith("examen_")]
+
+
+def _celda(v, cuenta, columna):
+    return v._tabla.item(str(_fila(v, cuenta).alumno.id), "values")[list(v._tabla["columns"]).index(columna)]
+
+
+def test_sin_examenes_la_tabla_no_tiene_columnas_de_examen(curso_ui):
+    assert _columnas_examen(curso_ui.vista) == []
+
+
+def test_cada_examen_agrega_una_columna_con_su_nombre(curso_ui):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    assert [t for _c, t in _columnas_examen(v)] == ["Examen - Parcial 1"]
+    _crear_examen_ui(curso_ui, "Final")
+    assert [t for _c, t in _columnas_examen(v)] == ["Examen - Parcial 1", "Examen - Final"]
+    assert "prom_examenes" not in v._tabla["columns"]  # ya no hay columna de promedio
+
+
+def test_la_columna_muestra_la_calificacion_y_0_si_no_se_ha_capturado(curso_ui):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    columna = _columnas_examen(v)[0][0]
+    _calificar(v, "100000001", "42")
+    assert _celda(v, "100000001", columna) == "42"
+    assert _celda(v, "100000002", columna) == "0"
+    _calificar(v, "100000002", "7.5")
+    assert _celda(v, "100000002", columna) == "7.5"
+
+
+def test_la_tabla_muestra_las_columnas_al_abrir_un_curso_con_examenes(curso_ui):
+    curso_ui.srv.crear_examen(curso_ui.curso.id, "Parcial 1")
+    curso_ui.app.abrir_curso(curso_ui.curso.id)
+    curso_ui.app.update()
+    assert [t for _c, t in _columnas_examen(curso_ui.app._vista)] == ["Examen - Parcial 1"]
+
+
+def test_ordenar_por_una_columna_de_examen(curso_ui):
+    v = _examen_listo(curso_ui)
+    _calificar(v, "100000003", "90")
+    _calificar(v, "100000001", "50")
+    columna = _columnas_examen(v)[0][0]
+    v._ordenar_por(columna)  # primer clic: de mayor a menor
+    assert v._tabla.get_children()[0] == str(_fila(v, "100000003").alumno.id)
+    assert "▼" in v._tabla.heading(columna, "text")
+    v._ordenar_por(columna)
+    assert v._tabla.get_children()[-1] == str(_fila(v, "100000003").alumno.id)
+
+
+# ---------------- gestionar exámenes: renombrar y eliminar ----------------
+@pytest.fixture
+def preguntas(monkeypatch):
+    """Captura las confirmaciones (messagebox.askyesno); `respuesta['si']` decide qué se contesta."""
+    from tkinter import messagebox
+
+    registro = SimpleNamespace(mensajes=[], si=True)
+    monkeypatch.setattr(
+        messagebox, "askyesno", lambda titulo, mensaje, **k: registro.mensajes.append(mensaje) or registro.si
+    )
+    return registro
+
+
+def _nombres_examenes(curso_ui):
+    return [e.nombre for e in curso_ui.srv.listar_examenes(curso_ui.curso.id)]
+
+
+def test_renombrar_el_examen_actualiza_lista_y_columna(curso_ui):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    _calificar(v, "100000001", "42")
+
+    def renombrar():
+        d = _dialogo(curso_ui.app)
+        assert d._nombre.get() == "Parcial 1"  # parte del nombre actual
+        d._nombre.delete(0, "end")
+        d._nombre.insert(0, "Primer parcial")
+        d._aceptar()
+
+    curso_ui.app.after(300, renombrar)
+    v.renombrar_examen()
+    assert _nombres_examenes(curso_ui) == ["Primer parcial"]
+    assert v._examen_actual.nombre == "Primer parcial" and v._menu_examen.get() == "Primer parcial"
+    assert [t for _c, t in _columnas_examen(v)] == ["Examen - Primer parcial"]
+    alumno = _fila(v, "100000001").alumno
+    assert curso_ui.srv.calificacion_de(v._examen_actual.id, alumno.id).puntos == 42  # conserva notas
+
+
+def test_renombrar_a_un_nombre_repetido_muestra_el_error_en_el_dialogo(curso_ui):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    _crear_examen_ui(curso_ui, "Final")
+
+    def repetir():
+        d = _dialogo(curso_ui.app)
+        d._nombre.delete(0, "end")
+        d._nombre.insert(0, "parcial 1")
+        d._aceptar()
+        assert "Ya existe" in d._error.cget("text")
+        d.cancelar()
+
+    curso_ui.app.after(300, repetir)
+    v.renombrar_examen()
+    assert _nombres_examenes(curso_ui) == ["Parcial 1", "Final"]
+
+
+def test_eliminar_el_examen_pide_confirmacion_e_informa_cuantas_calificaciones_se_pierden(curso_ui, preguntas):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    _calificar(v, "100000001", "42")
+    _calificar(v, "100000002", "35")
+    preguntas.si = False
+    v.eliminar_examen()
+    assert "2 calificaciones" in preguntas.mensajes[-1] and "Parcial 1" in preguntas.mensajes[-1]
+    assert _nombres_examenes(curso_ui) == ["Parcial 1"]  # cancelado: no pasa nada
+
+    preguntas.si = True
+    v.eliminar_examen()
+    assert _nombres_examenes(curso_ui) == []
+    assert v._examen_actual is None and _columnas_examen(v) == []
+    assert curso_ui.srv._repo.contar_calificaciones_examen(1) == 0
+    assert _texto_franja(v).startswith("✓") or "eliminado" in _texto_franja(v).lower()
+
+
+def test_eliminar_un_examen_conserva_los_demas_y_elige_otro(curso_ui, preguntas):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    _crear_examen_ui(curso_ui, "Final")  # queda seleccionado el Final
+    v.eliminar_examen()
+    assert _nombres_examenes(curso_ui) == ["Parcial 1"]
+    assert v._examen_actual.nombre == "Parcial 1"
+    assert [t for _c, t in _columnas_examen(v)] == ["Examen - Parcial 1"]
+
+
+def test_eliminar_un_examen_sin_calificaciones_lo_dice(curso_ui, preguntas):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    v.eliminar_examen()
+    assert "no tiene calificaciones" in preguntas.mensajes[-1].lower()
+
+
+def test_eliminar_examen_invalida_el_deshacer_de_ese_examen(curso_ui, preguntas):
+    v = _examen_listo(curso_ui, "Parcial 1")
+    _calificar(v, "100000001", "42")
+    v.eliminar_examen()
+    v.deshacer()  # no debe fallar ni resucitar nada
+    assert _nombres_examenes(curso_ui) == []
+
+
+def test_sin_examenes_renombrar_y_eliminar_avisan(curso_ui, preguntas):
+    v = curso_ui.vista
+    _modo_examen(curso_ui)
+    v.renombrar_examen()
+    assert _texto_franja(v).startswith("⚠")
+    v.eliminar_examen()
+    assert _texto_franja(v).startswith("⚠") and preguntas.mensajes == []
