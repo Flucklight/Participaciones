@@ -68,5 +68,5 @@ Cada tarea termina con `.venv\Scripts\python.exe -m pytest` en verde. Arranque m
 
 ### Checkpoint 2: Completo
 - [x] Suite completa en verde (371 pasadas, 3 omitidas); ejecutable 1.3.0 generado.
-- [ ] Flujo manual con las muestras reales: elegir columna, revisar dudosas, aplicar, deshacer.
-- [ ] Listo para revisión y commit.
+- [x] Flujo manual con las muestras reales: elegir columna, revisar dudosas, aplicar, deshacer.
+- [x] Listo para revisión y commit.
