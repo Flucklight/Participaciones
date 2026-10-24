@@ -7,7 +7,7 @@ from typing import Callable
 import customtkinter as ctk
 
 from core.errores import ErrorDominio
-from core.models import Alumno, Examen, TipoInscripcion
+from core.models import Alumno, Examen, ResumenEliminacionAlumno, TipoInscripcion
 from core.normalizacion import es_numero_de_cuenta, limpiar_nombre
 
 from . import tema
@@ -288,3 +288,39 @@ class DialogoEquipo(Dialogo):
             self._error.configure(text=str(error))
             return
         self.cerrar(resultado)
+
+
+def _plural(n: int, singular: str, plural: str) -> str:
+    return f"{n} {singular if n == 1 else plural}"
+
+
+class DialogoEliminarAlumno(Dialogo):
+    """Confirmación para eliminar a un oyente del curso (R20); devuelve True o None si se cancela.
+
+    Enter no confirma (ningún campo lo escucha) y Esc cancela: es una acción destructiva, aunque se
+    puede deshacer."""
+
+    def __init__(self, master, resumen: ResumenEliminacionAlumno) -> None:
+        super().__init__(master, "Eliminar alumno")
+        ctk.CTkLabel(self.cuerpo, text="Eliminar alumno del curso", font=tema.fuente(18, "bold"),
+                     text_color=tema.COLOR_PELIGRO).pack(anchor="w")
+        ctk.CTkLabel(
+            self.cuerpo, text=resumen.alumno.nombre_completo, wraplength=390, justify="left", anchor="w",
+            font=tema.fuente(13, "bold"),
+        ).pack(fill="x", pady=(10, 4))
+        perdidas = [_plural(resumen.participaciones, "participación", "participaciones")]
+        if resumen.calificaciones_examen:
+            perdidas.append(_plural(resumen.calificaciones_examen, "calificación de examen",
+                                    "calificaciones de examen"))
+        if resumen.tareas:
+            perdidas.append("su calificación de tareas")
+        if resumen.proyecto:
+            perdidas.append("su calificación de proyecto")
+        texto = "Se eliminará a este oyente de este curso. Se perderán " + ", ".join(perdidas) + "."
+        if resumen.equipo is not None:
+            texto += f"\n\nDejará el equipo {resumen.equipo}."
+        if resumen.alumno_borrado:
+            texto += "\n\nNo está inscrito en otro curso, así que también se borrará del sistema."
+        texto += "\n\nPodrás deshacerlo hasta tu siguiente captura."
+        ctk.CTkLabel(self.cuerpo, text=texto, wraplength=390, justify="left", anchor="w").pack(fill="x")
+        self.botones("Eliminar", lambda: self.cerrar(True), peligro=True)

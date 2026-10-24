@@ -12,6 +12,7 @@ from .models import (
     CalificacionTareas,
     Curso,
     Examen,
+    InstantaneaAlumno,
     Participacion,
     ResumenAlumno,
     ResumenBase,
@@ -305,6 +306,70 @@ class Repositorio:
             (alumno_id,),
         )
         return [_curso(f) for f in filas]
+
+    def capturar_alumno_en_curso(self, curso_id: int, alumno_id: int) -> InstantaneaAlumno | None:
+        """Todo lo del alumno en el curso (None si no está inscrito), para eliminarlo o deshacer."""
+        alumno = self.obtener_alumno(alumno_id)
+        tipo = self.obtener_tipo_inscripcion(curso_id, alumno_id)
+        if alumno is None or tipo is None:
+            return None
+        califs = self._db.execute(
+            "SELECT c.* FROM calificacion c JOIN examen e ON e.id = c.examen_id"
+            " WHERE e.curso_id = ? AND c.alumno_id = ? ORDER BY c.examen_id",
+            (curso_id, alumno_id),
+        )
+        en_otros = self._db.execute(
+            "SELECT COUNT(*) FROM inscripcion WHERE alumno_id = ? AND curso_id <> ?",
+            (alumno_id, curso_id),
+        ).fetchone()[0]
+        return InstantaneaAlumno(
+            curso_id=curso_id,
+            alumno=alumno,
+            tipo=tipo,
+            participaciones=sorted(
+                self.listar_participaciones(curso_id, alumno_id), key=lambda p: (p.fecha, p.id)
+            ),
+            calificaciones=[_calificacion(f) for f in califs],
+            tareas=self.obtener_tareas(curso_id, alumno_id),
+            proyecto=self.obtener_proyecto(curso_id, alumno_id),
+            equipo=self.equipo_de(curso_id, alumno_id),
+            alumno_borrado=en_otros == 0,
+        )
+
+    def eliminar_alumno_de_curso(self, curso_id: int, alumno_id: int) -> None:
+        """Quita al alumno de ESE curso con todo lo suyo ahí; si no queda inscrito en otro, borra al alumno.
+        Los equipos no se tocan (un equipo vacío conserva su número)."""
+        self._db.execute(
+            "DELETE FROM calificacion WHERE alumno_id = ? AND examen_id IN"
+            " (SELECT id FROM examen WHERE curso_id = ?)",
+            (alumno_id, curso_id),
+        )
+        for tabla in ("participacion", "calificacion_tareas", "calificacion_proyecto", "miembro_equipo",
+                      "inscripcion"):
+            self._db.execute(f"DELETE FROM {tabla} WHERE curso_id = ? AND alumno_id = ?", (curso_id, alumno_id))
+        self._db.execute(
+            "DELETE FROM alumno WHERE id = ? AND NOT EXISTS (SELECT 1 FROM inscripcion WHERE alumno_id = ?)",
+            (alumno_id, alumno_id),
+        )
+
+    def restaurar_alumno_en_curso(self, s: InstantaneaAlumno) -> Alumno:
+        """Inverso de `eliminar_alumno_de_curso`. Si hubo que borrar al alumno se vuelve a crear (con
+        otro id); las participaciones se reinsertan en su orden (fecha, id). No valida: lo hace el servicio."""
+        alumno = s.alumno
+        if s.alumno_borrado:
+            alumno = self.insertar_alumno(Alumno(None, alumno.nombre_completo, alumno.num_cuenta))
+        self.guardar_inscripcion(s.curso_id, alumno.id, s.tipo)
+        for p in s.participaciones:
+            self.insertar_participacion(Participacion(None, s.curso_id, alumno.id, p.decimas, p.fecha, p.nota))
+        for c in s.calificaciones:
+            self.guardar_calificacion(Calificacion(c.examen_id, alumno.id, c.puntos, c.fecha))
+        if s.tareas:
+            self.guardar_tareas(CalificacionTareas(s.curso_id, alumno.id, s.tareas.puntos, s.tareas.fecha))
+        if s.proyecto:
+            self.guardar_proyecto(CalificacionProyecto(s.curso_id, alumno.id, s.proyecto.puntos, s.proyecto.fecha))
+        if s.equipo is not None:
+            self.agregar_miembro_equipo(s.curso_id, alumno.id, s.equipo)
+        return alumno
 
     # ---- participaciones -----------------------------------------------
     def insertar_participacion(self, p: Participacion) -> Participacion:

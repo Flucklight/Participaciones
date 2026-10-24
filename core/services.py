@@ -27,6 +27,7 @@ from .models import (
     EstadoLinea,
     EstadoRegistro,
     Examen,
+    InstantaneaAlumno,
     LineaExamen,
     LineaHistorial,
     LineaImportacion,
@@ -41,6 +42,7 @@ from .models import (
     ResultadoTareas,
     ResumenAlumno,
     ResumenBase,
+    ResumenEliminacionAlumno,
     TipoInscripcion,
     VistaPreviaImportacion,
     VistaPreviaTareas,
@@ -320,6 +322,60 @@ class ServicioParticipaciones:
             raise ErrorDominio("El alumno no está inscrito en este curso.")
         with self._repo.transaccion():
             self._repo.guardar_inscripcion(curso_id, alumno_id, tipo)
+
+    def _oyente_en_curso(self, curso_id: int, alumno_id: int) -> InstantaneaAlumno:
+        self._curso_o_error(curso_id)
+        instantanea = self._repo.capturar_alumno_en_curso(curso_id, alumno_id)
+        if instantanea is None:
+            raise ErrorDominio("El alumno no está inscrito en este curso.")
+        if instantanea.tipo != TipoInscripcion.OYENTE:
+            raise ErrorDominio(
+                f"{instantanea.alumno.nombre_completo} es alumno regular: solo se pueden eliminar oyentes."
+            )
+        return instantanea
+
+    def resumen_eliminacion_alumno(self, curso_id: int, alumno_id: int) -> ResumenEliminacionAlumno:
+        """Qué se perdería al eliminar al oyente del curso (para la confirmación). Rechaza a los regulares."""
+        s = self._oyente_en_curso(curso_id, alumno_id)
+        return ResumenEliminacionAlumno(
+            alumno=s.alumno,
+            participaciones=len(s.participaciones),
+            calificaciones_examen=len(s.calificaciones),
+            tareas=s.tareas is not None,
+            proyecto=s.proyecto is not None,
+            equipo=s.equipo,
+            alumno_borrado=s.alumno_borrado,
+        )
+
+    def eliminar_alumno_oyente(self, curso_id: int, alumno_id: int) -> InstantaneaAlumno:
+        """Elimina a un oyente de ESE curso con todo lo suyo ahí (R20). Si no queda inscrito en otro
+        curso, borra también al alumno. Devuelve lo eliminado para `deshacer_eliminacion_alumno`; la
+        confirmación es responsabilidad de la UI. Solo oyentes: un regular lanza `ErrorDominio`."""
+        s = self._oyente_en_curso(curso_id, alumno_id)
+        with self._repo.transaccion():
+            self._repo.eliminar_alumno_de_curso(curso_id, alumno_id)
+        return s
+
+    def deshacer_eliminacion_alumno(self, s: InstantaneaAlumno) -> Alumno:
+        """Restaura lo eliminado por `eliminar_alumno_oyente`. Si algo cambió y no se puede devolver
+        igual (cuenta ocupada, alumno ya reinscrito, equipo desaparecido), no restaura nada."""
+        self._curso_o_error(s.curso_id)
+        nombre = s.alumno.nombre_completo
+        if s.alumno_borrado:
+            otro = self._repo.buscar_alumno_por_cuenta(s.alumno.num_cuenta) if s.alumno.num_cuenta else None
+            if otro is not None:
+                raise ErrorDominio(
+                    f"No se puede deshacer: el número de cuenta {s.alumno.num_cuenta} ya pertenece a "
+                    f"{otro.nombre_completo}."
+                )
+        elif self._repo.obtener_alumno(s.alumno.id) is None:
+            raise ErrorDominio(f"No se puede deshacer: {nombre} ya no existe.")
+        elif self._repo.obtener_tipo_inscripcion(s.curso_id, s.alumno.id) is not None:
+            raise ErrorDominio(f"No se puede deshacer: {nombre} ya está en este curso.")
+        if s.equipo is not None and s.equipo not in self._repo.datos_equipos(s.curso_id):
+            raise ErrorDominio(f"No se puede deshacer: el equipo {s.equipo} ya no existe.")
+        with self._repo.transaccion():
+            return self._repo.restaurar_alumno_en_curso(s)
 
     def cursos_de_alumno(self, alumno_id: int) -> list[Curso]:
         return self._repo.cursos_de_alumno(alumno_id)

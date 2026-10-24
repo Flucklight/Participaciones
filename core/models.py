@@ -373,6 +373,37 @@ class ResultadoImportacionTareas:
     anteriores: dict[int, CalificacionTareas | None] = field(default_factory=dict)
 
 
+@dataclass
+class InstantaneaAlumno:
+    """Todo lo de un alumno en un curso, tal como estaba antes de eliminarlo (R20).
+
+    Sirve para confirmar con conteos y para deshacer. `alumno_borrado` es True si el alumno no
+    estaba inscrito en ningún otro curso y por eso también se borra la persona."""
+
+    curso_id: int
+    alumno: Alumno
+    tipo: TipoInscripcion
+    participaciones: list[Participacion] = field(default_factory=list)
+    calificaciones: list[Calificacion] = field(default_factory=list)
+    tareas: CalificacionTareas | None = None
+    proyecto: CalificacionProyecto | None = None
+    equipo: int | None = None
+    alumno_borrado: bool = False
+
+
+@dataclass(frozen=True)
+class ResumenEliminacionAlumno:
+    """Lo que se perdería al eliminar a un oyente de un curso (para la confirmación)."""
+
+    alumno: Alumno
+    participaciones: int
+    calificaciones_examen: int
+    tareas: bool
+    proyecto: bool
+    equipo: int | None
+    alumno_borrado: bool
+
+
 @dataclass(frozen=True)
 class ResumenBase:
     """Conteos que describen una base completa (la local o la de un archivo a importar)."""

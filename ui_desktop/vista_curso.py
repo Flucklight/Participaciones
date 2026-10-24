@@ -18,6 +18,7 @@ from core.models import (
     EstadoEquipo,
     EstadoRegistro,
     Examen,
+    InstantaneaAlumno,
     ResultadoCalificacion,
     ResultadoProyecto,
     ResultadoRegistro,
@@ -33,6 +34,7 @@ from . import tema
 from .agrupar import agrupar_por_equipo, es_encabezado, iid_encabezado, numero_de_encabezado
 from .dialogos_curso import (
     DialogoAlumnoNuevo,
+    DialogoEliminarAlumno,
     DialogoElegirAlumno,
     DialogoEquipo,
     DialogoExamen,
@@ -120,6 +122,8 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_equipo: tuple[str, object] | None = None
         # Última calificación de proyecto: (equipo o None, {alumno_id: calificación previa}) para deshacer.
         self._ultimo_proyecto: tuple[int | None, dict] | None = None
+        # Último alumno eliminado (R20): todo lo suyo en el curso, para deshacerlo.
+        self._ultima_eliminacion: InstantaneaAlumno | None = None
 
         self._construir_encabezado()
         self._construir_registro()
@@ -151,14 +155,19 @@ class VistaCurso(ctk.CTkFrame):
         for texto, comando in (
             ("⬇  Exportar", self.exportar),
             ("＋  Agregar alumno", self.agregar_alumno),
+            ("－  Eliminar alumno", self.eliminar_alumno),
             ("⬆  Importar tareas", self.importar_tareas),
             ("⚖  Ponderaciones", self.ponderaciones),
         ):
-            ctk.CTkButton(
+            boton = ctk.CTkButton(
                 titulo, text=texto, height=34, command=comando,
                 fg_color="transparent", border_width=1, border_color=tema.COLOR_BORDE,
                 text_color=tema.COLOR_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
-            ).pack(side="right", anchor="s", padx=(8, 0))
+            )
+            boton.pack(side="right", anchor="s", padx=(8, 0))
+            if comando == self.eliminar_alumno:
+                self._boton_eliminar_alumno = boton
+                boton.configure(state="disabled")  # se habilita al elegir a un oyente en la tabla
 
     def _construir_registro(self) -> None:
         marco = ctk.CTkFrame(self, corner_radius=12, fg_color=tema.COLOR_TARJETA,
@@ -381,6 +390,7 @@ class VistaCurso(ctk.CTkFrame):
         self._numeros = {f.alumno.id: n for n, f in enumerate(self._filas, start=1)}
         self._tipos = {f.alumno.id: f.tipo for f in self._filas}
         self._dibujar_tabla()
+        self._actualizar_eliminar()
 
     def _filtradas(self) -> list[ResumenAlumno]:
         filas = self._filas
@@ -736,6 +746,7 @@ class VistaCurso(ctk.CTkFrame):
             self._entrada_alumno.focus_set()
 
     def _registrado(self, resultado: ResultadoRegistro, alumno_nuevo: bool = False) -> None:
+        self._ultima_eliminacion = None
         self._ultimo_registro = resultado.participacion.id
         self._ultima_calificacion = None
         self._ultima_tareas = None
@@ -763,6 +774,9 @@ class VistaCurso(ctk.CTkFrame):
         self._entrada_alumno.focus_set()
 
     def deshacer(self) -> None:
+        if self._ultima_eliminacion is not None:
+            self._deshacer_eliminacion()
+            return
         if self._ultimo_proyecto is not None:
             self._deshacer_proyecto()
             return
@@ -1078,6 +1092,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_importacion = None
         self._ultimo_proyecto = None
         self._ultima_equipo = None
+        self._ultima_eliminacion = None
         self._ultima_calificacion = (
             resultado.examen.id, resultado.alumno.id, resultado.calificacion_anterior
         )
@@ -1207,6 +1222,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultima_importacion = None
         self._ultimo_proyecto = None
         self._ultima_equipo = None
+        self._ultima_eliminacion = None
         self._ultima_tareas = (resultado.alumno.id, resultado.anterior)
         self._pendiente = None
         self._elegido = None
@@ -1383,6 +1399,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
         self._ultima_equipo = None
+        self._ultima_eliminacion = None
         self._ultimo_proyecto = (resultado.equipo, resultado.anteriores)
         self._pendiente = None
         self._elegido = None
@@ -1462,6 +1479,7 @@ class VistaCurso(ctk.CTkFrame):
             self.separar(elegidos)
 
     def _actualizar_barra(self) -> None:
+        self._actualizar_eliminar()
         n = len(self._seleccionados()) if self._formando else 0
         if not self._formando:
             self._etiqueta_seleccion.configure(text="")
@@ -1513,6 +1531,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
         self._ultimo_proyecto = None
+        self._ultima_eliminacion = None
         self._ultima_equipo = ("formado", resultado.numero)
         self.recargar()
         self._resaltar_miembros([a.id for a in resultado.miembros])
@@ -1590,8 +1609,30 @@ class VistaCurso(ctk.CTkFrame):
             menu.add_cascade(label="Agregar a" + (f" ({m} alumnos)" if m > 1 else ""), menu=submenu)
         return menu if menu.index("end") is not None else None
 
+    def _menu_alumno(self, evento) -> tk.Menu | None:
+        """Menú del clic derecho en el modo normal (sin «Formar equipos»): «Eliminar alumno…».
+
+        Sobre una fila no seleccionada la selecciona sola. Solo los oyentes se pueden eliminar: en
+        un regular la opción aparece desactivada, con el motivo.
+        """
+        if self._formando:
+            return None
+        iid = self._tabla.identify_row(evento.y)
+        if not iid or es_encabezado(iid) or self._tabla.identify_region(evento.x, evento.y) == "heading":
+            return None
+        alumno_id = int(iid)
+        self._tabla.selection_set(iid)
+        menu = tk.Menu(self, tearoff=0)
+        if self._tipos.get(alumno_id) == TipoInscripcion.OYENTE:
+            menu.add_command(label="Eliminar alumno…", command=lambda: self.eliminar_alumno(alumno_id))
+        else:
+            menu.add_command(label="Eliminar alumno (solo oyentes)", state="disabled")
+        return menu
+
     def _al_clic_derecho(self, evento) -> str:
         menu = self._menu_equipos(evento)
+        if menu is None:
+            menu = self._menu_alumno(evento)
         if menu is not None:
             try:
                 menu.tk_popup(evento.x_root, evento.y_root)
@@ -1611,6 +1652,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
         self._ultimo_proyecto = None
+        self._ultima_eliminacion = None
         self._ultima_equipo = ("separado", separados)
         self.recargar()
         self._resaltar_miembros(list(separados))
@@ -1635,6 +1677,7 @@ class VistaCurso(ctk.CTkFrame):
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
         self._ultimo_proyecto = None
+        self._ultima_eliminacion = None
         self._ultima_equipo = ("agregado", (numero, ids))
         self.recargar()
         self._resaltar_miembros(ids)
@@ -1678,6 +1721,65 @@ class VistaCurso(ctk.CTkFrame):
             self.recargar()
             self._resaltar(alumno.id)
             self._exito(f"{alumno.nombre_completo} agregado al curso.", deshacible=False)
+
+    def _actualizar_eliminar(self) -> None:
+        """El botón «Eliminar alumno» solo se habilita con un oyente elegido en la tabla (R20)."""
+        elegidos = self._seleccionados()
+        activo = (
+            not self._formando
+            and len(elegidos) == 1
+            and self._tipos.get(elegidos[0]) == TipoInscripcion.OYENTE
+        )
+        self._boton_eliminar_alumno.configure(state="normal" if activo else "disabled")
+
+    def eliminar_alumno(self, alumno_id: int | None = None) -> None:
+        """Elimina a un oyente del curso (R20): confirma con conteos y se puede deshacer."""
+        if alumno_id is None:
+            elegidos = self._seleccionados()
+            if len(elegidos) != 1:
+                self._error("Elige en la tabla al oyente que quieres eliminar.")
+                return
+            alumno_id = elegidos[0]
+        try:
+            resumen = self._servicio.resumen_eliminacion_alumno(self.curso.id, alumno_id)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        if not DialogoEliminarAlumno(self, resumen).mostrar():
+            self._info("Se canceló: no se eliminó a nadie.")
+            return
+        try:
+            eliminado = self._servicio.eliminar_alumno_oyente(self.curso.id, alumno_id)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
+        self._ultima_importacion = None
+        self._ultimo_proyecto = None
+        self._ultima_equipo = None
+        self._ultima_eliminacion = eliminado
+        self._pendiente = None
+        if self._elegido is not None and self._elegido.id == alumno_id:
+            self._elegido = None
+            self._entrada_alumno.delete(0, "end")
+            self._entrada_decimas.delete(0, "end")
+            self._ocultar_sugerencias()
+        self.recargar()
+        self._exito(f"{resumen.alumno.nombre_completo} eliminado del curso.", deshacible=True)
+        self._entrada_alumno.focus_set()
+
+    def _deshacer_eliminacion(self) -> None:
+        eliminado = self._ultima_eliminacion
+        self._ultima_eliminacion = None
+        try:
+            alumno = self._servicio.deshacer_eliminacion_alumno(eliminado)
+        except ErrorDominio as error:
+            self._error(str(error))
+            return
+        self.recargar()
+        self._resaltar(alumno.id)
+        self._info(f"Se deshizo la eliminación de {alumno.nombre_completo}.")
+        self._entrada_alumno.focus_set()
 
     # ====================== ponderaciones de la calificación final ======================
     def ponderaciones(self, enfocar: str = "participaciones", sugerir_examenes: bool = False, mensaje: str = ""):
@@ -1738,6 +1840,7 @@ class VistaCurso(ctk.CTkFrame):
             return
         self._pendiente = None
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None  # lo anterior ya no se deshace
+        self._ultima_eliminacion = None
         self._ultima_importacion = resultado.anteriores or None
         self._ultima_equipo = None
         self._ultimo_proyecto = None

@@ -72,6 +72,7 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 - Si no existe: se ofrece crearlo en el curso como **regular** u **oyente**.
 - Todo el flujo es operable con teclado.
 - Doble clic en un alumno abre su historial.
+- **Eliminar alumno:** solo para **oyentes**, con el botón «－ Eliminar alumno» (con un oyente elegido en la tabla) o con clic derecho sobre su fila. Se quita del curso con sus participaciones, calificaciones, tareas, proyecto y equipo; si no está en otro curso, también se borra del sistema. Pide confirmación con lo que se perderá y se puede **deshacer** desde la franja hasta tu siguiente captura. A un alumno regular (de la lista de inscripción) no se le puede eliminar.
 
 **Exámenes y tareas.** El selector `[Participación | Examen | Tareas | Proyecto]` (tecla **F2**, recorre los cuatro modos) cambia el registro rápido a calificaciones: eliges el examen (o creas uno con «＋ Nuevo»; «⋯» renombra o elimina), escribes cuenta o nombre y la calificación. Si el alumno ya tenía nota, la app avisa «Ya tiene X; se cambiará a Y» y pide confirmar; «Deshacer» la restaura. La tabla gana una columna «Examen - <nombre>» por examen. En modo **Tareas** capturas la calificación de tareas de cada alumno (con la misma advertencia de reemplazo y «Deshacer»); la tabla muestra la columna «Tareas».
 
@@ -155,6 +156,7 @@ Participaciones/
    - ✅ Curso (tabla + registro rápido)
    - ✅ Historial de un alumno (doble clic en una fila del curso)
 5b. ✅ Exportar/importar la base entre máquinas (Configuración).
+5c. ✅ Eliminar alumnos oyentes de un curso (con deshacer).
 5. ✅ Exportar a Excel/CSV (botón «Exportar» en la pantalla Curso) y respaldos (automático al cerrar y manual desde Configuración).
 
 ## Mejoras futuras
