@@ -21,6 +21,7 @@ COLOR_TAREAS = ("#0F766E", "#0D8A80")           # modo Tareas (verde azulado)
 COLOR_TAREAS_HOVER = ("#0B5F58", "#0A736B")
 COLOR_PROYECTO = ("#A23B72", "#B8508A")         # modo Proyecto (ciruela)
 COLOR_PROYECTO_HOVER = ("#862F5D", "#9C4276")
+COLOR_VISITANTE = ("#7A5A3A", "#C7A27C")        # alumnos visitantes de otro grupo (tierra)
 
 # --- equipos (tabla del modo Proyecto): dos tonos que se alternan; encabezado fuerte y fila suave ---
 COLOR_EQUIPO_A_ENCABEZADO = ("#C9D7F2", "#34456B")

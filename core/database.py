@@ -10,6 +10,17 @@ from .rutas import carpeta_datos
 
 RUTA_POR_DEFECTO = carpeta_datos() / "participaciones.db"
 
+# Inscripción (R21): un visitante apunta a su curso de origen; los demás tipos no tienen origen.
+_COLUMNAS_INSCRIPCION = """(
+    curso_id        INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
+    alumno_id       INTEGER NOT NULL REFERENCES alumno(id) ON DELETE CASCADE,
+    tipo            TEXT NOT NULL CHECK (tipo IN ('regular', 'oyente', 'visitante')),
+    curso_origen_id INTEGER REFERENCES curso(id) ON DELETE CASCADE,
+    PRIMARY KEY (curso_id, alumno_id),
+    CHECK ((tipo = 'visitante') = (curso_origen_id IS NOT NULL)),
+    CHECK (curso_origen_id IS NULL OR curso_origen_id <> curso_id)
+)"""
+
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS alumno (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,12 +40,7 @@ CREATE TABLE IF NOT EXISTS curso (
     UNIQUE (ciclo, materia, grupo)
 );
 
-CREATE TABLE IF NOT EXISTS inscripcion (
-    curso_id  INTEGER NOT NULL REFERENCES curso(id) ON DELETE CASCADE,
-    alumno_id INTEGER NOT NULL REFERENCES alumno(id) ON DELETE CASCADE,
-    tipo      TEXT NOT NULL CHECK (tipo IN ('regular', 'oyente')),
-    PRIMARY KEY (curso_id, alumno_id)
-);
+CREATE TABLE IF NOT EXISTS inscripcion __COLUMNAS_INSCRIPCION__;
 
 CREATE TABLE IF NOT EXISTS participacion (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +108,7 @@ CREATE TABLE IF NOT EXISTS calificacion (
     fecha     TEXT NOT NULL,
     PRIMARY KEY (examen_id, alumno_id)
 );
-"""
+""".replace("__COLUMNAS_INSCRIPCION__", _COLUMNAS_INSCRIPCION)
 
 
 def conectar(ruta: str | Path = RUTA_POR_DEFECTO) -> sqlite3.Connection:
@@ -124,6 +130,44 @@ def _migrar(conexion: sqlite3.Connection) -> None:
         if nombre not in columnas:
             conexion.execute(f"ALTER TABLE equipo ADD COLUMN {nombre} TEXT NOT NULL DEFAULT ''")
     conexion.commit()
+    _migrar_inscripcion(conexion)
+
+
+def _migrar_inscripcion(conexion: sqlite3.Connection) -> None:
+    """Las bases anteriores a 1.7.0 no tienen `curso_origen_id` ni el tipo «visitante» (R21).
+
+    El `CHECK` de `tipo` no se puede alterar, así que se reconstruye la tabla en una sola transacción,
+    con una copia de la base antes (`antes_migracion_*.db` junto a ella) si es un archivo. Ninguna otra
+    tabla referencia a `inscripcion`, por eso se puede borrar y renombrar sin tocar nada más."""
+    if any(f["name"] == "curso_origen_id" for f in conexion.execute("PRAGMA table_info(inscripcion)")):
+        return
+    conexion.commit()
+    _copia_antes_de_migrar(conexion)
+    try:
+        conexion.executescript(
+            f"BEGIN; CREATE TABLE inscripcion_nueva {_COLUMNAS_INSCRIPCION};"
+            " INSERT INTO inscripcion_nueva (curso_id, alumno_id, tipo)"
+            " SELECT curso_id, alumno_id, tipo FROM inscripcion;"
+            " DROP TABLE inscripcion; ALTER TABLE inscripcion_nueva RENAME TO inscripcion; COMMIT;"
+        )
+    except sqlite3.Error:
+        if conexion.in_transaction:
+            conexion.execute("ROLLBACK")
+        raise
+
+
+def _copia_antes_de_migrar(conexion: sqlite3.Connection) -> None:
+    from datetime import datetime
+
+    ruta = _ruta_de(conexion)
+    if ruta is None:  # en memoria (p. ej. un archivo ajeno abierto para fusionar): no hay qué respaldar
+        return
+    destino = ruta.parent / f"antes_migracion_{datetime.now():%Y%m%d_%H%M%S}.db"
+    copia = sqlite3.connect(destino)
+    try:
+        conexion.backup(copia)
+    finally:
+        copia.close()
 
 
 def respaldar(conexion: sqlite3.Connection, carpeta: str | Path, conservar: int = 10) -> Path:

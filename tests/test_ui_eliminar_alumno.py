@@ -179,7 +179,7 @@ def test_clic_derecho_en_un_regular_muestra_la_opcion_desactivada(curso_ui):
     v = curso_ui.vista
     iid = str(_fila(v, "100000001").alumno.id)
     menu = v._menu_alumno(_evento(curso_ui, iid))
-    assert menu.entrycget(0, "label") == "Eliminar alumno (solo oyentes)"
+    assert menu.entrycget(0, "label") == "Eliminar alumno (solo oyentes y visitantes)"
     assert str(menu.entrycget(0, "state")) == "disabled"
 
 

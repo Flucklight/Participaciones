@@ -85,7 +85,9 @@ class PlanFusion:
     _alumnos_nuevos: dict[int, Alumno] = field(default_factory=dict, repr=False)
     _mapa: dict[int, int] = field(default_factory=dict, repr=False)  # alumno del archivo -> alumno local
     _cuentas: dict[int, str] = field(default_factory=dict, repr=False)  # alumno local -> cuenta a asignar
-    _inscripciones: list[tuple[ClaveCurso, int, TipoInscripcion, str | None]] = field(default_factory=list, repr=False)
+    # (curso, alumno del archivo, tipo, id de la decisión, curso de origen si es visitante)
+    _inscripciones: list[tuple[ClaveCurso, int, TipoInscripcion, str | None, ClaveCurso | None]] = field(
+        default_factory=list, repr=False)
     _examenes: list[tuple[ClaveCurso, str]] = field(default_factory=list, repr=False)
     _ponderaciones: list[tuple[ClaveCurso, Ponderaciones, str | None]] = field(default_factory=list, repr=False)
     _participaciones: list[tuple[ClaveCurso, int, Participacion, str | None]] = field(default_factory=list, repr=False)
@@ -122,18 +124,29 @@ class _CursoArchivo:
     proyecto: dict[int, CalificacionProyecto]
     equipos: dict[int, tuple[str, str]]
     miembros: dict[int, list[int]]
+    # Visitantes (R21): {alumno del archivo: clave de su curso de origen}
+    origenes: dict[int, ClaveCurso] = field(default_factory=dict)
 
     @property
     def clave(self) -> ClaveCurso:
         return (self.curso.ciclo, self.curso.materia, self.curso.grupo)
+
+    def inscritos_tipo(self, alumno_id: int) -> TipoInscripcion | None:
+        return next((t for a, t in self.inscritos if a.id == alumno_id), None)
 
 
 def _leer(repo: Repositorio) -> list[_CursoArchivo]:
     cursos = []
     for curso in repo.listar_cursos(incluir_archivados=True):
         examenes = repo.listar_examenes(curso.id)
-        inscritos = [(r.alumno, r.tipo) for r in repo.resumen_curso(curso.id)]
+        filas = repo.resumen_curso(curso.id)
+        inscritos = [(r.alumno, r.tipo) for r in filas]
         ids = [a.id for a, _ in inscritos]
+        origenes = {}
+        for r in filas:
+            origen = repo.obtener_curso(r.curso_origen_id) if r.curso_origen_id is not None else None
+            if origen is not None:
+                origenes[r.alumno.id] = (origen.ciclo, origen.materia, origen.grupo)
         cursos.append(_CursoArchivo(
             curso=curso,
             ponderaciones=repo.obtener_ponderaciones(curso.id),
@@ -147,6 +160,7 @@ def _leer(repo: Repositorio) -> list[_CursoArchivo]:
             proyecto={i: c for i in ids if (c := repo.obtener_proyecto(curso.id, i))},
             equipos=repo.datos_equipos(curso.id),
             miembros={n: [a.id for a in alumnos] for n, alumnos in repo.miembros_por_equipo(curso.id).items()},
+            origenes=origenes,
         ))
     return cursos
 
@@ -253,16 +267,19 @@ def _comparar_curso(local: Repositorio, d: _CursoArchivo, plan: PlanFusion, omit
     for src in activos:
         lid = local_id(src)
         actual = local.obtener_tipo_inscripcion(cid, lid) if (cid and lid) else None
-        if actual is None:
-            plan._inscripciones.append((clave, src, tipos[src], None))
+        tipo = tipos[src]
+        if tipo == TipoInscripcion.VISITANTE or actual == TipoInscripcion.VISITANTE:
+            _comparar_visita(local, plan, d, src, cid, lid, actual, etiqueta, nombre_alumno[src])
+        elif actual is None:
+            plan._inscripciones.append((clave, src, tipo, None, None))
             plan._sumar("inscripciones")
-        elif actual == tipos[src]:
+        elif actual == tipo:
             plan.iguales += 1
         else:
             ref = f"inscripcion|{clave}|{src}"
             plan.conflictos.append(Conflicto(
-                ref, "Tipo de inscripción", f"{nombre_alumno[src]} · {etiqueta}", actual.value, tipos[src].value))
-            plan._inscripciones.append((clave, src, tipos[src], ref))
+                ref, "Tipo de inscripción", f"{nombre_alumno[src]} · {etiqueta}", actual.value, tipo.value))
+            plan._inscripciones.append((clave, src, tipo, ref, None))
 
     # ---- participaciones (eventos): se agregan; las idénticas a las locales las decide la persona
     for src in activos:
@@ -334,6 +351,38 @@ def _comparar_curso(local: Repositorio, d: _CursoArchivo, plan: PlanFusion, omit
         plan._equipos.append((clave, numero, nombre, proyecto, miembros, ref))
 
 
+def _comparar_visita(local: Repositorio, plan: PlanFusion, d: _CursoArchivo, src: int, cid: int | None,
+                     lid: int | None, actual: TipoInscripcion | None, etiqueta: str, nombre: str) -> None:
+    """Visitantes (R21): se agregan si faltan; si ya es visitante con otro origen es un conflicto; un
+    visitante contra un regular u oyente (o al revés) no se toca: se conserva lo local y se avisa."""
+    clave = d.clave
+    en_archivo = d.origenes.get(src)
+    if d.inscritos_tipo(src) != TipoInscripcion.VISITANTE or en_archivo is None:
+        plan.avisos.append(
+            f"{nombre} es visitante aquí en «{etiqueta}» pero en el archivo está inscrito de otro modo: se conserva lo local."
+        )
+        return
+    if actual is None:
+        plan._inscripciones.append((clave, src, TipoInscripcion.VISITANTE, None, en_archivo))
+        plan._sumar("inscripciones")
+        return
+    if actual != TipoInscripcion.VISITANTE:
+        plan.avisos.append(
+            f"{nombre} es visitante en el archivo («{etiqueta}») pero aquí ya está inscrito como {actual.value}: "
+            "se conserva lo local."
+        )
+        return
+    origen_local = local.obtener_curso(local.obtener_origen_inscripcion(cid, lid))
+    clave_local = (origen_local.ciclo, origen_local.materia, origen_local.grupo)
+    if clave_local == en_archivo:
+        plan.iguales += 1
+        return
+    ref = f"inscripcion|{clave}|{src}"
+    plan.conflictos.append(Conflicto(
+        ref, "Grupo de origen del visitante", f"{nombre} · {etiqueta}", _etiqueta(clave_local), _etiqueta(en_archivo)))
+    plan._inscripciones.append((clave, src, TipoInscripcion.VISITANTE, ref, en_archivo))
+
+
 def _texto_pond(p: Ponderaciones) -> str:
     return (f"participaciones {_num(p.participaciones)} % · exámenes {_num(p.examenes)} % · "
             f"tareas {_num(p.tareas)} % · proyecto {_num(p.proyecto)} %")
@@ -397,10 +446,19 @@ def aplicar_plan(
             if vale(ref, usar_importado):
                 local.guardar_ponderaciones(curso_id(clave), p)
                 aplicados["ponderaciones"] += 1
-        for clave, src, tipo, ref in plan._inscripciones:
-            if vale(ref, usar_importado):
+        omitidas_visitas = 0
+        for clave, src, tipo, ref, origen in sorted(plan._inscripciones, key=lambda i: i[2] == TipoInscripcion.VISITANTE):
+            if not vale(ref, usar_importado):  # las visitas van al final: su origen ya debe ser regular
+                continue
+            if tipo == TipoInscripcion.VISITANTE:
+                origen_id = curso_id(origen)
+                if local.obtener_tipo_inscripcion(origen_id, mapa[src]) != TipoInscripcion.REGULAR:
+                    omitidas_visitas += 1  # el origen no quedó como regular (se conservó lo local): no se crea
+                    continue
+                local.guardar_inscripcion(curso_id(clave), mapa[src], tipo, origen_id)
+            else:
                 local.guardar_inscripcion(curso_id(clave), mapa[src], tipo)
-                aplicados["inscripciones"] += 1
+            aplicados["inscripciones"] += 1
         for clave, src, p, ref in plan._participaciones:
             if ref is None or ref in mantener_ambas:
                 local.insertar_participacion(Participacion(None, curso_id(clave), mapa[src], p.decimas, p.fecha, p.nota))
@@ -429,7 +487,9 @@ def aplicar_plan(
                 for alumno in local.miembros_por_equipo(cid).get(numero, []):
                     local.quitar_miembro_equipo(cid, alumno.id)
             for src in miembros:
+                if local.obtener_tipo_inscripcion(cid, mapa[src]) is None:
+                    continue  # una visita que no se pudo crear no deja equipo suelto
                 if local.equipo_de(cid, mapa[src]) is None:  # nunca se mueve a quien ya tiene otro equipo
                     local.agregar_miembro_equipo(cid, mapa[src], numero)
             aplicados["equipos"] += 1
-    return ResultadoFusion(dict(aplicados), plan.omitidos)
+    return ResultadoFusion(dict(aplicados), plan.omitidos + omitidas_visitas)

@@ -29,6 +29,7 @@ def configurar_estilo() -> dict[str, str]:
     estilo.map(f"{ESTILO}.Heading", background=[("active", tema.COLOR_NAV_ACTIVO[i])])
     return {
         "suave": tema.COLOR_TEXTO_SUAVE[i],
+        "visitante": tema.COLOR_VISITANTE[i],
         "reciente": tema.COLOR_RECIENTE[i],
         "aviso": tema.COLOR_AVISO[i],
         "enc0": tema.COLOR_EQUIPO_A_ENCABEZADO[i],

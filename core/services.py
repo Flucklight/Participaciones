@@ -152,6 +152,11 @@ class ServicioParticipaciones:
             self._repo.contar_participaciones_curso(curso_id),
         )
 
+    def resumen_eliminacion_visitantes(self, curso_id: int) -> int:
+        """Cuántas visitas en otros grupos desaparecen al eliminar este curso (R21)."""
+        self._curso_o_error(curso_id)
+        return self._repo.contar_visitantes_de_origen(curso_id)
+
     def resumen_eliminacion_examenes(self, curso_id: int) -> tuple[int, int]:
         """(exámenes, calificaciones) que se perderían al eliminar el curso."""
         self._curso_o_error(curso_id)
@@ -204,10 +209,14 @@ class ServicioParticipaciones:
     def resumen_curso(self, curso_id: int) -> list[ResumenAlumno]:
         self._curso_o_error(curso_id)
         filas = self._repo.resumen_curso(curso_id)
-        pesos = self.ponderaciones_de(curso_id)
         for f in filas:  # la final nunca se guarda: se calcula con lo que hay y las ponderaciones del curso
-            f.final = calificacion_final(f.total, f.prom_examenes, f.tareas, f.proyecto, pesos)
+            f.final = calificacion_final(f.total, f.prom_examenes, f.tareas, f.proyecto, self._pesos_de(curso_id, f))
         return filas
+
+    def _pesos_de(self, curso_id: int, fila: ResumenAlumno) -> Ponderaciones:
+        """Las ponderaciones con que se calcula la final de esa fila: las del curso de origen si es
+        visitante (su final es una sola, la del grupo donde está inscrito), si no las del curso."""
+        return self.ponderaciones_de(fila.curso_origen_id or curso_id)
 
     # ================= calificación final =================
     def ponderaciones_de(self, curso_id: int) -> Ponderaciones:
@@ -250,7 +259,7 @@ class ServicioParticipaciones:
         if fila is None:
             raise ErrorDominio("El alumno no está inscrito en este curso.")
         return desglose_final(
-            fila.total, fila.prom_examenes, fila.tareas, fila.proyecto, self.ponderaciones_de(curso_id)
+            fila.total, fila.prom_examenes, fila.tareas, fila.proyecto, self._pesos_de(curso_id, fila)
         )
 
     def buscar_alumnos_en_curso(self, curso_id: int, consulta: str) -> list[Alumno]:
@@ -294,6 +303,7 @@ class ServicioParticipaciones:
         Si el número de cuenta ya existe en el sistema se reutiliza ese alumno.
         """
         self._curso_o_error(curso_id)
+        self._sin_visitante(tipo)
         nombre = limpiar_nombre(nombre_completo)
         cuenta = self._cuenta_validada(num_cuenta)
         with self._repo.transaccion():
@@ -312,14 +322,28 @@ class ServicioParticipaciones:
     ) -> None:
         self._curso_o_error(curso_id)
         self._alumno_o_error(alumno_id)
+        self._sin_visitante(tipo)
         with self._repo.transaccion():
             if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is not None:
                 raise ErrorDominio("El alumno ya está inscrito en este curso.")
             self._repo.guardar_inscripcion(curso_id, alumno_id, tipo)
 
+    @staticmethod
+    def _sin_visitante(tipo: TipoInscripcion) -> None:
+        if tipo == TipoInscripcion.VISITANTE:
+            raise ErrorDominio("Un visitante se inscribe con «Visitante de otro grupo», eligiendo su grupo de origen.")
+
     def cambiar_tipo(self, curso_id: int, alumno_id: int, tipo: TipoInscripcion) -> None:
-        if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
+        actual = self._repo.obtener_tipo_inscripcion(curso_id, alumno_id)
+        if actual is None:
             raise ErrorDominio("El alumno no está inscrito en este curso.")
+        self._sin_visitante(tipo)
+        if actual == TipoInscripcion.VISITANTE:
+            raise ErrorDominio("Un visitante no cambia de tipo; quítalo del grupo si ya no lo visita.")
+        if tipo != TipoInscripcion.REGULAR and self._repo.cursos_de_visita(curso_id, alumno_id):
+            raise ErrorDominio(
+                "Este alumno visita otros grupos desde este curso: quita sus visitas antes de cambiarlo de tipo."
+            )
         with self._repo.transaccion():
             self._repo.guardar_inscripcion(curso_id, alumno_id, tipo)
 
@@ -328,15 +352,17 @@ class ServicioParticipaciones:
         instantanea = self._repo.capturar_alumno_en_curso(curso_id, alumno_id)
         if instantanea is None:
             raise ErrorDominio("El alumno no está inscrito en este curso.")
-        if instantanea.tipo != TipoInscripcion.OYENTE:
+        if instantanea.tipo == TipoInscripcion.REGULAR:
             raise ErrorDominio(
-                f"{instantanea.alumno.nombre_completo} es alumno regular: solo se pueden eliminar oyentes."
+                f"{instantanea.alumno.nombre_completo} es alumno regular: solo se pueden eliminar "
+                "oyentes y visitantes."
             )
         return instantanea
 
     def resumen_eliminacion_alumno(self, curso_id: int, alumno_id: int) -> ResumenEliminacionAlumno:
         """Qué se perdería al eliminar al oyente del curso (para la confirmación). Rechaza a los regulares."""
         s = self._oyente_en_curso(curso_id, alumno_id)
+        origen = self._repo.obtener_curso(s.curso_origen_id) if s.curso_origen_id else None
         return ResumenEliminacionAlumno(
             alumno=s.alumno,
             participaciones=len(s.participaciones),
@@ -345,6 +371,8 @@ class ServicioParticipaciones:
             proyecto=s.proyecto is not None,
             equipo=s.equipo,
             alumno_borrado=s.alumno_borrado,
+            es_visitante=s.tipo == TipoInscripcion.VISITANTE,
+            grupo_origen=origen.grupo if origen else "",
         )
 
     def eliminar_alumno_oyente(self, curso_id: int, alumno_id: int) -> InstantaneaAlumno:
@@ -372,13 +400,78 @@ class ServicioParticipaciones:
             raise ErrorDominio(f"No se puede deshacer: {nombre} ya no existe.")
         elif self._repo.obtener_tipo_inscripcion(s.curso_id, s.alumno.id) is not None:
             raise ErrorDominio(f"No se puede deshacer: {nombre} ya está en este curso.")
-        if s.equipo is not None and s.equipo not in self._repo.datos_equipos(s.curso_id):
-            raise ErrorDominio(f"No se puede deshacer: el equipo {s.equipo} ya no existe.")
+        if s.tipo == TipoInscripcion.VISITANTE:
+            origen = self._repo.obtener_curso(s.curso_origen_id)
+            if origen is None:
+                raise ErrorDominio("No se puede deshacer: el grupo de origen ya no existe.")
+            if self._repo.obtener_tipo_inscripcion(origen.id, s.alumno.id) != TipoInscripcion.REGULAR:
+                raise ErrorDominio(f"No se puede deshacer: {nombre} ya no es alumno regular del grupo {origen.grupo}.")
+        if s.equipo is not None:
+            if s.equipo not in self._repo.datos_equipos(s.curso_id):
+                raise ErrorDominio(f"No se puede deshacer: el equipo {s.equipo} ya no existe.")
+            home = s.curso_origen_id if s.tipo == TipoInscripcion.VISITANTE else s.curso_id
+            for otro in self._enlazados_desde(home, s.alumno.id, s.curso_id):
+                if self._repo.equipo_de(otro, s.alumno.id) is not None:
+                    raise ErrorDominio(
+                        f"No se puede deshacer: {nombre} ya está en un equipo del grupo "
+                        f"{self._curso_o_error(otro).grupo}."
+                    )
         with self._repo.transaccion():
             return self._repo.restaurar_alumno_en_curso(s)
 
     def cursos_de_alumno(self, alumno_id: int) -> list[Curso]:
-        return self._repo.cursos_de_alumno(alumno_id)
+        """Los cursos donde viven los datos del alumno: sin los grupos que solo visita (R21)."""
+        return [
+            c for c in self._repo.cursos_de_alumno(alumno_id)
+            if self._repo.obtener_tipo_inscripcion(c.id, alumno_id) != TipoInscripcion.VISITANTE
+        ]
+
+    # ================= visitantes (R21) =================
+    def _curso_de_datos(self, curso_id: int, alumno_id: int) -> int:
+        """El curso donde viven los datos del alumno: el de origen si es visitante; si no, el mismo."""
+        return self._repo.obtener_origen_inscripcion(curso_id, alumno_id) or curso_id
+
+    def curso_de_datos(self, curso_id: int, alumno_id: int) -> Curso:
+        return self._curso_o_error(self._curso_de_datos(curso_id, alumno_id))
+
+    def cursos_hermanos(self, curso_id: int) -> list[Curso]:
+        """Los otros grupos de la misma materia y ciclo (de donde pueden venir los visitantes)."""
+        return self._repo.cursos_hermanos(self._curso_o_error(curso_id))
+
+    def candidatos_visitante(self, curso_id: int, consulta: str) -> list[tuple[Alumno, Curso]]:
+        """Regulares de otros grupos de la misma materia y ciclo que coinciden con la consulta (cuenta
+        o nombre, también parcial) y aún no están en este curso: [(alumno, su grupo de origen)]."""
+        curso = self._curso_o_error(curso_id)
+        consulta = consulta.strip()
+        if not consulta:
+            raise ErrorDominio("Escribe un número de cuenta o un nombre.")
+        hermanos = {c.id: c for c in self._repo.cursos_hermanos(curso)}
+        if es_numero_de_cuenta(consulta):
+            coincide = lambda a: a.num_cuenta == consulta  # noqa: E731
+        else:
+            tokens = normalizar(consulta).split()
+            coincide = lambda a: all(t in normalizar(a.nombre_completo) for t in tokens)  # noqa: E731
+        return [
+            (alumno, hermanos[origen])
+            for alumno, origen in self._repo.regulares_de_cursos(list(hermanos))
+            if coincide(alumno) and self._repo.obtener_tipo_inscripcion(curso_id, alumno.id) is None
+        ]
+
+    def inscribir_visitante(self, curso_id: int, alumno_id: int, curso_origen_id: int) -> Alumno:
+        """Inscribe como visitante a un regular de otro grupo de la misma materia y ciclo. No toca su
+        inscripción de origen; todo lo que se le capture aquí se guarda allá."""
+        curso = self._curso_o_error(curso_id)
+        origen = self._curso_o_error(curso_origen_id)
+        alumno = self._alumno_o_error(alumno_id)
+        if origen.id not in {c.id for c in self._repo.cursos_hermanos(curso)}:
+            raise ErrorDominio("El grupo de origen debe ser otro grupo de la misma materia y ciclo.")
+        if self._repo.obtener_tipo_inscripcion(origen.id, alumno_id) != TipoInscripcion.REGULAR:
+            raise ErrorDominio(f"{alumno.nombre_completo} no es alumno regular del grupo {origen.grupo}.")
+        if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is not None:
+            raise ErrorDominio(f"{alumno.nombre_completo} ya está en este curso.")
+        with self._repo.transaccion():
+            self._repo.guardar_inscripcion(curso_id, alumno_id, TipoInscripcion.VISITANTE, origen.id)
+        return alumno
 
     def tipo_inscripcion(self, curso_id: int, alumno_id: int) -> TipoInscripcion:
         tipo = self._repo.obtener_tipo_inscripcion(curso_id, alumno_id)
@@ -467,16 +560,25 @@ class ServicioParticipaciones:
         alumno = self._alumno_o_error(alumno_id)
         if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
             raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
+        destino = self._curso_de_datos(curso_id, alumno_id)
+        nota = nota.strip()
+        if destino != curso_id:  # visitante (R21): se guarda en el origen, anotando desde qué grupo
+            nota = self._nota_de_visita(nota, self._curso_o_error(curso_id))
         with self._repo.transaccion():
-            antes = self._repo.total_alumno(curso_id, alumno_id)
+            antes = self._repo.total_alumno(destino, alumno_id)
             participacion = self._repo.insertar_participacion(
-                Participacion(None, curso_id, alumno_id, decimas, fecha or date.today(), nota.strip())
+                Participacion(None, destino, alumno_id, decimas, fecha or date.today(), nota)
             )
-            total = self._repo.total_alumno(curso_id, alumno_id)
+            total = self._repo.total_alumno(destino, alumno_id)
         return ResultadoRegistro(
             EstadoRegistro.GUARDADO, decimas, alumno, participacion, total,
             decimas_aplicadas=round(total - antes, 4),
+            guardado_en=self._repo.obtener_curso(destino) if destino != curso_id else None,
         )
+
+    @staticmethod
+    def _nota_de_visita(nota: str, desde: Curso) -> str:
+        return f"Grupo {desde.grupo}" + (f" · {nota}" if nota else "")
 
     def deshacer(self, participacion_id: int) -> Participacion:
         """Elimina una participación (p. ej. el último registro rápido)."""
@@ -488,11 +590,12 @@ class ServicioParticipaciones:
         return participacion
 
     def historial(self, curso_id: int, alumno_id: int) -> list[Participacion]:
-        return self._repo.listar_participaciones(curso_id, alumno_id)
+        return self._repo.listar_participaciones(self._curso_de_datos(curso_id, alumno_id), alumno_id)
 
     def historial_detallado(self, curso_id: int, alumno_id: int) -> list[LineaHistorial]:
         """Participaciones (más reciente primero) con efecto real y total acumulado."""
-        cronologicas = list(reversed(self._repo.listar_participaciones(curso_id, alumno_id)))
+        destino = self._curso_de_datos(curso_id, alumno_id)
+        cronologicas = list(reversed(self._repo.listar_participaciones(destino, alumno_id)))
         totales = acumulados(p.decimas for p in cronologicas)
         lineas, anterior = [], 0.0
         for participacion, total in zip(cronologicas, totales):
@@ -502,7 +605,7 @@ class ServicioParticipaciones:
         return lineas
 
     def total_alumno(self, curso_id: int, alumno_id: int) -> float:
-        return self._repo.total_alumno(curso_id, alumno_id)
+        return self._repo.total_alumno(self._curso_de_datos(curso_id, alumno_id), alumno_id)
 
     def agregar_participacion(
         self, curso_id: int, alumno_id: int, decimas: float, fecha: date, nota: str = ""
@@ -616,20 +719,46 @@ class ServicioParticipaciones:
         alumno = self._alumno_o_error(alumno_id)
         if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
             raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
-        anterior = self._repo.obtener_calificacion(examen_id, alumno_id)
+        destino = self._curso_de_datos(curso_id, alumno_id)
+        if destino != curso_id:  # visitante (R21): el examen homónimo del origen
+            examen = self._examen_en_origen(examen, destino)
+        guardado_en = self._repo.obtener_curso(destino) if destino != curso_id else None
+        anterior = self._repo.obtener_calificacion(examen.id, alumno_id)
         if anterior and not reemplazar:
             return ResultadoCalificacion(
                 EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumno, examen, anterior,
-                self.promedio_examenes_alumno(curso_id, alumno_id),
+                self.promedio_examenes_alumno(destino, alumno_id), guardado_en=guardado_en,
             )
         with self._repo.transaccion():
             self._repo.guardar_calificacion(
-                Calificacion(examen_id, alumno_id, puntos, fecha or date.today())
+                Calificacion(examen.id, alumno_id, puntos, fecha or date.today())
             )
         return ResultadoCalificacion(
             EstadoRegistro.GUARDADO, puntos, alumno, examen, anterior,
-            self.promedio_examenes_alumno(curso_id, alumno_id),
+            self.promedio_examenes_alumno(destino, alumno_id), guardado_en=guardado_en,
         )
+
+    def _examen_en_origen(self, examen: Examen, origen_id: int) -> Examen:
+        """El examen del curso de origen con el mismo nombre; si no existe no se crea nada (R21)."""
+        homonimo = self._repo.buscar_examen_por_nombre(origen_id, examen.nombre)
+        if homonimo is None:
+            origen = self._curso_o_error(origen_id)
+            raise ErrorDominio(
+                f"El grupo {origen.grupo} no tiene un examen «{examen.nombre}»: "
+                "créalo allá o captura desde ese grupo."
+            )
+        return homonimo
+
+    def _examen_de_datos(self, examen_id: int, alumno_id: int) -> Examen | None:
+        """El examen donde vive la calificación de ese alumno: el mismo, o el homónimo de su origen
+        si es visitante del curso del examen (None si el origen no lo tiene)."""
+        examen = self._repo.obtener_examen(examen_id)
+        if examen is None:
+            return None
+        destino = self._curso_de_datos(examen.curso_id, alumno_id)
+        if destino == examen.curso_id:
+            return examen
+        return self._repo.buscar_examen_por_nombre(destino, examen.nombre)
 
     def deshacer_calificacion(
         self, examen_id: int, alumno_id: int, anterior: Calificacion | None
@@ -642,33 +771,37 @@ class ServicioParticipaciones:
                 self._repo.guardar_calificacion(anterior)
 
     def calificacion_de(self, examen_id: int, alumno_id: int) -> Calificacion | None:
-        return self._repo.obtener_calificacion(examen_id, alumno_id)
+        examen = self._examen_de_datos(examen_id, alumno_id)
+        return self._repo.obtener_calificacion(examen.id, alumno_id) if examen else None
 
     def historial_examenes(self, curso_id: int, alumno_id: int) -> list[LineaExamen]:
         """Todos los exámenes del curso, en orden de creación, con la calificación del alumno."""
         self._curso_o_error(curso_id)
+        destino = self._curso_de_datos(curso_id, alumno_id)
         return [
             LineaExamen(e, self._repo.obtener_calificacion(e.id, alumno_id))
-            for e in self._repo.listar_examenes(curso_id)
+            for e in self._repo.listar_examenes(destino)
         ]
 
     def establecer_calificacion(
         self, curso_id: int, examen_id: int, alumno_id: int, puntos: float, fecha: date
     ) -> Calificacion:
         """Alta o corrección desde el historial (el profesor ya eligió el examen y confirmó)."""
-        self.registrar_calificacion_para_alumno(
+        resultado = self.registrar_calificacion_para_alumno(
             curso_id, examen_id, alumno_id, puntos, fecha, reemplazar=True
         )
-        return self._repo.obtener_calificacion(examen_id, alumno_id)
+        return self._repo.obtener_calificacion(resultado.examen.id, alumno_id)
 
     def eliminar_calificacion(self, examen_id: int, alumno_id: int) -> None:
         """Quita la calificación: el examen vuelve a valer 0. La confirmación es de la UI."""
-        if self._repo.obtener_calificacion(examen_id, alumno_id) is None:
+        examen = self._examen_de_datos(examen_id, alumno_id)
+        if examen is None or self._repo.obtener_calificacion(examen.id, alumno_id) is None:
             raise ErrorDominio("Ese examen no tiene calificación.")
         with self._repo.transaccion():
-            self._repo.eliminar_calificacion(examen_id, alumno_id)
+            self._repo.eliminar_calificacion(examen.id, alumno_id)
 
     def promedio_examenes_alumno(self, curso_id: int, alumno_id: int) -> float | None:
+        curso_id = self._curso_de_datos(curso_id, alumno_id)
         examenes = self._repo.listar_examenes(curso_id)
         puntos = self._repo.puntos_por_alumno(curso_id).get(alumno_id, {})
         return promedio_examenes([puntos.get(e.id, 0.0) for e in examenes])
@@ -724,14 +857,18 @@ class ServicioParticipaciones:
         alumno = self._alumno_o_error(alumno_id)
         if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
             raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
-        anterior = self._repo.obtener_tareas(curso_id, alumno_id)
+        destino = self._curso_de_datos(curso_id, alumno_id)  # visitante (R21): se guarda en el origen
+        guardado_en = self._repo.obtener_curso(destino) if destino != curso_id else None
+        anterior = self._repo.obtener_tareas(destino, alumno_id)
         if anterior and not reemplazar:
-            return ResultadoTareas(EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumno, anterior)
+            return ResultadoTareas(
+                EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumno, anterior, guardado_en=guardado_en
+            )
         with self._repo.transaccion():
             self._repo.guardar_tareas(
-                CalificacionTareas(curso_id, alumno_id, puntos, fecha or date.today())
+                CalificacionTareas(destino, alumno_id, puntos, fecha or date.today())
             )
-        return ResultadoTareas(EstadoRegistro.GUARDADO, puntos, alumno, anterior)
+        return ResultadoTareas(EstadoRegistro.GUARDADO, puntos, alumno, anterior, guardado_en=guardado_en)
 
     def deshacer_tareas(
         self, curso_id: int, alumno_id: int, anterior: CalificacionTareas | None
@@ -739,26 +876,27 @@ class ServicioParticipaciones:
         """Restaura la calificación previa, o la elimina si no había ninguna."""
         with self._repo.transaccion():
             if anterior is None:
-                self._repo.eliminar_tareas(curso_id, alumno_id)
+                self._repo.eliminar_tareas(self._curso_de_datos(curso_id, alumno_id), alumno_id)
             else:
                 self._repo.guardar_tareas(anterior)
 
     def tareas_de(self, curso_id: int, alumno_id: int) -> CalificacionTareas | None:
-        return self._repo.obtener_tareas(curso_id, alumno_id)
+        return self._repo.obtener_tareas(self._curso_de_datos(curso_id, alumno_id), alumno_id)
 
     def establecer_tareas(
         self, curso_id: int, alumno_id: int, puntos: float, fecha: date
     ) -> CalificacionTareas:
         """Alta o corrección desde el historial (el profesor ya eligió y confirmó)."""
         self.registrar_tareas_para_alumno(curso_id, alumno_id, puntos, fecha, reemplazar=True)
-        return self._repo.obtener_tareas(curso_id, alumno_id)
+        return self.tareas_de(curso_id, alumno_id)
 
     def eliminar_tareas(self, curso_id: int, alumno_id: int) -> None:
         """Quita la calificación: las tareas vuelven a valer 0. La confirmación es de la UI."""
-        if self._repo.obtener_tareas(curso_id, alumno_id) is None:
+        destino = self._curso_de_datos(curso_id, alumno_id)
+        if self._repo.obtener_tareas(destino, alumno_id) is None:
             raise ErrorDominio("Este alumno no tiene calificación de tareas.")
         with self._repo.transaccion():
-            self._repo.eliminar_tareas(curso_id, alumno_id)
+            self._repo.eliminar_tareas(destino, alumno_id)
 
     # ================= importación =================
     def previsualizar_importacion(self, lista: ListaInscripcion) -> VistaPreviaImportacion:
@@ -900,17 +1038,22 @@ class ServicioParticipaciones:
     ) -> ResultadoProyecto:
         """Un solo camino para un alumno o un equipo. Si alguno ya tiene una nota distinta de la
         nueva no guarda nada hasta repetir con `reemplazar=True` (las iguales no cuentan)."""
-        anteriores = {a.id: self._repo.obtener_proyecto(curso_id, a.id) for a in alumnos}
+        destinos = {a.id: self._curso_de_datos(curso_id, a.id) for a in alumnos}  # visitantes (R21): el origen
+        en_otro_grupo = sum(1 for d in destinos.values() if d != curso_id)
+        anteriores = {a.id: self._repo.obtener_proyecto(destinos[a.id], a.id) for a in alumnos}
         con_otra = sum(1 for a in anteriores.values() if a is not None and a.puntos != puntos)
         if con_otra and not reemplazar:
             return ResultadoProyecto(
-                EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumnos, equipo, con_otra, anteriores
+                EstadoRegistro.CONFIRMAR_REEMPLAZO, puntos, alumnos, equipo, con_otra, anteriores,
+                en_otro_grupo=en_otro_grupo,
             )
         fecha = fecha or date.today()
         with self._repo.transaccion():
             for alumno in alumnos:
-                self._repo.guardar_proyecto(CalificacionProyecto(curso_id, alumno.id, puntos, fecha))
-        return ResultadoProyecto(EstadoRegistro.GUARDADO, puntos, alumnos, equipo, 0, anteriores)
+                self._repo.guardar_proyecto(CalificacionProyecto(destinos[alumno.id], alumno.id, puntos, fecha))
+        return ResultadoProyecto(
+            EstadoRegistro.GUARDADO, puntos, alumnos, equipo, 0, anteriores, en_otro_grupo=en_otro_grupo
+        )
 
     def deshacer_proyecto(
         self, curso_id: int, anteriores: dict[int, CalificacionProyecto | None]
@@ -919,26 +1062,27 @@ class ServicioParticipaciones:
         with self._repo.transaccion():
             for alumno_id, anterior in anteriores.items():
                 if anterior is None:
-                    self._repo.eliminar_proyecto(curso_id, alumno_id)
+                    self._repo.eliminar_proyecto(self._curso_de_datos(curso_id, alumno_id), alumno_id)
                 else:
                     self._repo.guardar_proyecto(anterior)
 
     def proyecto_de(self, curso_id: int, alumno_id: int) -> CalificacionProyecto | None:
-        return self._repo.obtener_proyecto(curso_id, alumno_id)
+        return self._repo.obtener_proyecto(self._curso_de_datos(curso_id, alumno_id), alumno_id)
 
     def establecer_proyecto(
         self, curso_id: int, alumno_id: int, puntos: float, fecha: date
     ) -> CalificacionProyecto:
         """Alta o corrección desde el historial (la persona ya eligió y confirmó)."""
         self.registrar_proyecto_para_alumno(curso_id, alumno_id, puntos, fecha, reemplazar=True)
-        return self._repo.obtener_proyecto(curso_id, alumno_id)
+        return self.proyecto_de(curso_id, alumno_id)
 
     def eliminar_proyecto(self, curso_id: int, alumno_id: int) -> None:
         """Quita la calificación: el proyecto vuelve a valer 0. La confirmación es de la UI."""
-        if self._repo.obtener_proyecto(curso_id, alumno_id) is None:
+        destino = self._curso_de_datos(curso_id, alumno_id)
+        if self._repo.obtener_proyecto(destino, alumno_id) is None:
             raise ErrorDominio("Este alumno no tiene calificación de proyecto.")
         with self._repo.transaccion():
-            self._repo.eliminar_proyecto(curso_id, alumno_id)
+            self._repo.eliminar_proyecto(destino, alumno_id)
 
     # ================= equipos de proyecto =================
     MAX_NOMBRE_EQUIPO = 60
@@ -965,11 +1109,11 @@ class ServicioParticipaciones:
         """
         self._curso_o_error(curso_id)
         nombre, proyecto = self._datos_equipo(nombre, proyecto)
-        alumnos, con_equipo = self._alumnos_para_equipo(
+        alumnos, con_equipo, grupo_de = self._alumnos_para_equipo(
             curso_id, alumno_ids, "Elige al menos un alumno para formar el equipo."
         )
         if con_equipo:
-            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo)
+            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo, grupo_de=grupo_de)
         with self._repo.transaccion():
             numero = self._repo.siguiente_numero_equipo(curso_id)
             self._repo.crear_equipo(curso_id, numero, nombre, proyecto)
@@ -983,11 +1127,11 @@ class ServicioParticipaciones:
         self._curso_o_error(curso_id)
         if numero not in self._repo.miembros_por_equipo(curso_id):
             raise ErrorDominio(f"El equipo {numero} no existe o ya no tiene miembros.")
-        alumnos, con_equipo = self._alumnos_para_equipo(
+        alumnos, con_equipo, grupo_de = self._alumnos_para_equipo(
             curso_id, alumno_ids, "Elige al menos un alumno para agregar al equipo."
         )
         if con_equipo:
-            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo)
+            return ResultadoEquipo(EstadoEquipo.YA_TIENEN_EQUIPO, con_equipo=con_equipo, grupo_de=grupo_de)
         with self._repo.transaccion():
             for alumno in alumnos:
                 self._repo.agregar_miembro_equipo(curso_id, alumno.id, numero)
@@ -995,8 +1139,10 @@ class ServicioParticipaciones:
 
     def _alumnos_para_equipo(
         self, curso_id: int, alumno_ids: list[int], mensaje_vacio: str
-    ) -> tuple[list[Alumno], list[tuple[Alumno, int]]]:
-        """Valida a los alumnos (sin repetir, inscritos) y separa a los que ya tienen equipo."""
+    ) -> tuple[list[Alumno], list[tuple[Alumno, int]], dict[int, str]]:
+        """Valida a los alumnos (sin repetir, inscritos) y separa a los que ya tienen equipo: en este
+        curso o, si son visitantes (R21), en su origen o en otro grupo que visitan. `grupo_de` dice el
+        grupo de quien lo tiene en otro."""
         ids = list(dict.fromkeys(alumno_ids))
         if not ids:
             raise ErrorDominio(mensaje_vacio)
@@ -1006,10 +1152,32 @@ class ServicioParticipaciones:
             if self._repo.obtener_tipo_inscripcion(curso_id, alumno_id) is None:
                 raise ErrorDominio(f"{alumno.nombre_completo} no está inscrito en este curso.")
             alumnos.append(alumno)
-        con_equipo = [
-            (a, numero) for a in alumnos if (numero := self._repo.equipo_de(curso_id, a.id)) is not None
-        ]
-        return alumnos, con_equipo
+        con_equipo: list[tuple[Alumno, int]] = []
+        grupo_de: dict[int, str] = {}
+        for a in alumnos:
+            numero = self._repo.equipo_de(curso_id, a.id)
+            if numero is not None:
+                con_equipo.append((a, numero))
+                continue
+            en_otro = self._equipo_en_otro_grupo(curso_id, a.id)
+            if en_otro is not None:
+                con_equipo.append((a, en_otro[0]))
+                grupo_de[a.id] = en_otro[1]
+        return alumnos, con_equipo, grupo_de
+
+    def _enlazados_desde(self, origen_id: int, alumno_id: int, excluir: int) -> list[int]:
+        """El curso de origen del alumno y los grupos que visita, sin `excluir` (R21)."""
+        return [c for c in [origen_id, *self._repo.cursos_de_visita(origen_id, alumno_id)] if c != excluir]
+
+    def _equipo_en_otro_grupo(self, curso_id: int, alumno_id: int) -> tuple[int, str] | None:
+        """(número, grupo) del equipo que el alumno ya tiene en su origen o en otro grupo que visita.
+        Un alumno está en un solo equipo entre todos esos grupos (R21)."""
+        home = self._curso_de_datos(curso_id, alumno_id)
+        for otro in self._enlazados_desde(home, alumno_id, curso_id):
+            numero = self._repo.equipo_de(otro, alumno_id)
+            if numero is not None:
+                return numero, self._curso_o_error(otro).grupo
+        return None
 
     def separar_de_equipo(self, curso_id: int, alumno_ids: list[int]) -> dict[int, int]:
         """Saca a los alumnos de su equipo. Devuelve {alumno_id: equipo que tenía} de quienes
@@ -1028,7 +1196,8 @@ class ServicioParticipaciones:
         """Devuelve a cada alumno a su equipo (salvo que ya esté en otro)."""
         with self._repo.transaccion():
             for alumno_id, numero in separados.items():
-                if self._repo.equipo_de(curso_id, alumno_id) is None:
+                if self._repo.equipo_de(curso_id, alumno_id) is None and \
+                        self._equipo_en_otro_grupo(curso_id, alumno_id) is None:
                     self._repo.agregar_miembro_equipo(curso_id, alumno_id, numero)
 
     def deshacer_equipo(self, curso_id: int, numero: int) -> None:
@@ -1071,8 +1240,14 @@ class ServicioParticipaciones:
         """
         curso = self._curso_o_error(curso_id)
         columna = self._columna_de_archivo(archivo, clave_columna)
-        inscritos = [r.alumno for r in self._repo.resumen_curso(curso_id)]
+        filas = self._repo.resumen_curso(curso_id)
+        inscritos = [r.alumno for r in filas]
         actuales = self._repo.tareas_por_alumno(curso_id)
+        for r in filas:  # visitantes (R21): su calificación actual vive en el origen
+            if r.curso_origen_id is not None:
+                tareas = self._repo.obtener_tareas(r.curso_origen_id, r.alumno.id)
+                if tareas is not None:
+                    actuales[r.alumno.id] = tareas.puntos
         repetidos = {
             nombre
             for nombre, veces in Counter(normalizar(f.nombre_completo) for f in archivo.filas).items()
@@ -1109,9 +1284,10 @@ class ServicioParticipaciones:
             for linea in aplicables:
                 if not linea.cambia:
                     continue
-                anteriores[linea.alumno.id] = self._repo.obtener_tareas(curso_id, linea.alumno.id)
+                destino = self._curso_de_datos(curso_id, linea.alumno.id)
+                anteriores[linea.alumno.id] = self._repo.obtener_tareas(destino, linea.alumno.id)
                 self._repo.guardar_tareas(
-                    CalificacionTareas(curso_id, linea.alumno.id, linea.puntos, fecha)
+                    CalificacionTareas(destino, linea.alumno.id, linea.puntos, fecha)
                 )
         iguales = sum(1 for l in aplicables if not l.cambia)
         return ResultadoImportacionTareas(
@@ -1125,7 +1301,7 @@ class ServicioParticipaciones:
         with self._repo.transaccion():
             for alumno_id, anterior in anteriores.items():
                 if anterior is None:
-                    self._repo.eliminar_tareas(curso_id, alumno_id)
+                    self._repo.eliminar_tareas(self._curso_de_datos(curso_id, alumno_id), alumno_id)
                 else:
                     self._repo.guardar_tareas(anterior)
 

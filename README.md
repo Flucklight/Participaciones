@@ -21,7 +21,7 @@ El proyecto se diseña para poder escalar a web más adelante: la lógica vive e
 ```
 alumno(id PK, num_cuenta UNIQUE NULL, nombre_completo, nombre_norm)
 curso(id, ciclo, carrera, materia, grupo, archivado)   -- único por ciclo+materia+grupo
-inscripcion(curso_id, alumno_id, tipo: 'regular' | 'oyente')
+inscripcion(curso_id, alumno_id, tipo: 'regular' | 'oyente' | 'visitante', curso_origen_id) -- curso_origen_id solo para visitantes: el grupo donde viven sus datos
 participacion(id, curso_id, alumno_id, decimas, fecha, nota)
 examen(id, curso_id, nombre, nombre_norm)               -- único por curso+nombre; sin puntaje máximo
 calificacion(examen_id, alumno_id, puntos, fecha)       -- una por alumno y examen
@@ -35,6 +35,7 @@ miembro_equipo(curso_id, alumno_id, numero)             -- un alumno en un solo 
 - El nombre se guarda **completo en un solo campo**, tal como viene en la lista de inscripción (`APELLIDO_PATERNO APELLIDO_MATERNO NOMBRES`). No se separan apellidos porque los compuestos (`DE LA PAZ`) no se pueden dividir de forma confiable.
 - Las participaciones son **eventos con fecha**; el total de un alumno se calcula sumándolas.
 - Los **oyentes** no tienen número de cuenta hasta que aparecen en una lista de inscripción.
+- Un alumno regular de un grupo puede ser **visitante** de otro grupo de la misma materia y ciclo. Todo lo que se le captura en el grupo que visita (participaciones, exámenes, tareas, proyecto) se guarda en su **grupo de origen**; nada se duplica y su calificación final es una sola, la del origen.
 - Los **exámenes** son independientes de las décimas: una calificación por alumno y examen, sin tope (se aceptan puntos extra). Un examen sin capturar vale 0. El **promedio de exámenes** es la media simple de todos los exámenes del curso y se calcula en `core/promedio.py`.
 - La **calificación de tareas** es el promedio de tareas que ya calculó otra plataforma: se captura (o corrige) por alumno y curso, sin tope, y la app no calcula nada. Sin captura vale 0. Es independiente de décimas y exámenes.
 - Los **equipos de proyecto** se forman por curso con 1 o más alumnos. El número es incremental y **nunca se reutiliza**, aunque el equipo se quede sin miembros. Un alumno está en un solo equipo. No afectan ninguna calificación.
@@ -72,7 +73,8 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 - Si no existe: se ofrece crearlo en el curso como **regular** u **oyente**.
 - Todo el flujo es operable con teclado.
 - Doble clic en un alumno abre su historial.
-- **Eliminar alumno:** solo para **oyentes**, con el botón «－ Eliminar alumno» (con un oyente elegido en la tabla) o con clic derecho sobre su fila. Se quita del curso con sus participaciones, calificaciones, tareas, proyecto y equipo; si no está en otro curso, también se borra del sistema. Pide confirmación con lo que se perderá y se puede **deshacer** desde la franja hasta tu siguiente captura. A un alumno regular (de la lista de inscripción) no se le puede eliminar.
+- **Eliminar alumno:** solo para **oyentes y visitantes**, con el botón «－ Eliminar alumno» (con uno elegido en la tabla) o con clic derecho sobre su fila. A un oyente se le quita del curso con sus participaciones, calificaciones, tareas, proyecto y equipo (y se borra del sistema si no está en otro curso); a un visitante solo se le quita la visita y su equipo en este grupo, sin tocar nada de su grupo de origen. Pide confirmación con lo que se perderá y se puede **deshacer** desde la franja hasta tu siguiente captura. A un alumno regular (de la lista de inscripción) no se le puede eliminar.
+- **Visitantes:** en «Agregar alumno» elige «¿Es de otro grupo de esta materia? Agregar como visitante…», busca por cuenta o nombre entre los regulares de los otros grupos de la materia y, si hay varios, elige. En la tabla aparece como «(visitante · grupo de origen)» y la franja avisa en qué grupo se guardó lo que captures. Un examen solo se le puede capturar si el grupo de origen tiene uno con el mismo nombre. Un alumno está en un solo equipo entre su grupo de origen y los que visita. Si eliminas el curso de origen, sus visitas desaparecen de los otros grupos (el diálogo te dice cuántas).
 
 **Exámenes y tareas.** El selector `[Participación | Examen | Tareas | Proyecto]` (tecla **F2**, recorre los cuatro modos) cambia el registro rápido a calificaciones: eliges el examen (o creas uno con «＋ Nuevo»; «⋯» renombra o elimina), escribes cuenta o nombre y la calificación. Si el alumno ya tenía nota, la app avisa «Ya tiene X; se cambiará a Y» y pide confirmar; «Deshacer» la restaura. La tabla gana una columna «Examen - <nombre>» por examen. En modo **Tareas** capturas la calificación de tareas de cada alumno (con la misma advertencia de reemplazo y «Deshacer»); la tabla muestra la columna «Tareas».
 
@@ -85,7 +87,7 @@ Vista parecida a la tabla de Excel, con registro rápido arriba.
 **Importar tareas desde un archivo.** Con «⬆ Importar tareas» eliges el `.xlsx` o `.csv` que descargas de la otra plataforma. La app reconoce a cada alumno por su nombre (o por número de cuenta si el archivo trae una columna «Cuenta») y te muestra una vista previa: qué columna importar (por omisión la del promedio), quién cambia («antes → después»), qué coincidencias son dudosas (solo se aplican si las marcas) y qué filas se omiten. Nunca crea alumnos ni toca a quienes el archivo no menciona. Al aplicar, puedes **deshacer la importación** completa.
 
 ### Exportar
-Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Tareas, Equipo, Proyecto, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Calificación final, Participaciones, Última, y hoja opcional «Participaciones» con el detalle; el Excel indica las ponderaciones usadas) o **CSV** (resumen). Los oyentes se excluyen salvo que marques «Incluir oyentes».
+Desde la pantalla Curso: **Excel** (hoja «Resumen» con No., Cuenta, Nombre, Décimas, Tareas, Equipo, Proyecto, una columna por examen y «Promedio exámenes» si el curso tiene exámenes, Calificación final, Participaciones, Última, y hoja opcional «Participaciones» con el detalle; el Excel indica las ponderaciones usadas) o **CSV** (resumen). Los oyentes y visitantes se excluyen salvo que marques «Incluir oyentes y visitantes» (la columna «Tipo» los distingue; los números y la final del visitante son los de su grupo de origen).
 
 ### Historial de un alumno
 - Tarjetas de resumen (total, número de registros, última participación y **calificación final** con su equivalencia de 0 a 10) y una línea con el **desglose** de la final por componente.
@@ -120,6 +122,7 @@ Crea `dist/Participaciones/Participaciones.exe` (≈46 MB, tarda ~30 s). Para us
 
 - **Datos del ejecutable:** se guardan en `%LOCALAPPDATA%\Participaciones\data` (base de datos y respaldos), fuera de la carpeta de la app: reconstruir, mover o borrar `dist/` nunca toca tus datos. La versión de desarrollo (`python main.py`) usa `data/` del proyecto, así que **son dos bases independientes**. Para pasar datos de una a otra usa **Configuración → Exportar base… / Importar base…**. La ruta exacta aparece en **Configuración**.
 - **Ícono:** `assets/icon/FES ARAGON.png` es la fuente; `tools/crear_icono.py` genera `assets/icon/app.ico` (el script de construcción lo ejecuta solo).
+- **Actualizar de versión:** la primera vez que se abre una base de la 1.6.x o anterior, la app la actualiza sola (agrega los visitantes) y deja una copia `antes_migracion_AAAAMMDD_HHMMSS.db` en la misma carpeta de datos; después esa base ya no la abre una versión anterior.
 - **Receta:** `participaciones.spec`. Dependencias solo para compilar: `requirements-build.txt`.
 - Si el proyecto está en OneDrive, el script borra `dist/` y manda los temporales fuera de OneDrive para evitar errores de "Acceso denegado" por la sincronización.
 
@@ -157,6 +160,7 @@ Participaciones/
    - ✅ Historial de un alumno (doble clic en una fila del curso)
 5b. ✅ Exportar/importar la base entre máquinas (Configuración).
 5c. ✅ Eliminar alumnos oyentes de un curso (con deshacer).
+5d. ✅ Visitantes de otro grupo de la misma materia (datos en el grupo de origen).
 5. ✅ Exportar a Excel/CSV (botón «Exportar» en la pantalla Curso) y respaldos (automático al cerrar y manual desde Configuración).
 
 ## Mejoras futuras

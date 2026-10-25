@@ -60,7 +60,7 @@ def exportar_curso(
         if incluir_oyentes or f.tipo == TipoInscripcion.REGULAR
     ]
     if not filas:
-        raise ErrorDominio("No hay alumnos para exportar (los oyentes están excluidos).")
+        raise ErrorDominio("No hay alumnos para exportar (los oyentes y visitantes están excluidos).")
 
     examenes = servicio.listar_examenes(curso_id)
     try:
@@ -84,8 +84,15 @@ def _numero(valor: float) -> int | float:
     return int(valor) if float(valor).is_integer() else round(valor, 4)
 
 
+_ETIQUETAS_TIPO = {
+    TipoInscripcion.REGULAR: "Regular",
+    TipoInscripcion.OYENTE: "Oyente",
+    TipoInscripcion.VISITANTE: "Visitante",
+}
+
+
 def _etiqueta_tipo(tipo: TipoInscripcion) -> str:
-    return "Oyente" if tipo == TipoInscripcion.OYENTE else "Regular"
+    return _ETIQUETAS_TIPO[tipo]
 
 
 # ------------------------------------------------- columnas del resumen
@@ -167,7 +174,10 @@ def _escribir_excel(
         hoja["A3"] = curso.carrera
     hoja["A4"] = f"Exportado el {datetime.now():%d/%m/%Y %H:%M}"
     hoja["A4"].font = Font(italic=True, color="666666")
-    hoja["A5"] = _texto_ponderaciones(servicio.ponderaciones_de(curso.id))  # para que el archivo se entienda solo
+    texto_ponderaciones = _texto_ponderaciones(servicio.ponderaciones_de(curso.id))  # para que el archivo se entienda solo
+    if any(f.tipo == TipoInscripcion.VISITANTE for f in filas):  # su final es la de su grupo de origen (R21)
+        texto_ponderaciones += " · La calificación final de los visitantes usa las ponderaciones de su grupo de origen."
+    hoja["A5"] = texto_ponderaciones
     hoja["A5"].font = Font(italic=True, color="666666")
 
     titulos = _titulos_resumen(examenes, con_tipo)

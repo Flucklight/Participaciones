@@ -39,6 +39,7 @@ from .dialogos_curso import (
     DialogoEquipo,
     DialogoExamen,
     DialogoExportar,
+    DialogoVisitante,
 )
 from .dialogos_ponderaciones import DialogoPonderaciones
 from .dialogos_tareas import DialogoImportarTareas
@@ -99,6 +100,7 @@ class VistaCurso(ctk.CTkFrame):
         self._filas: list[ResumenAlumno] = []
         self._numeros: dict[int, int] = {}
         self._tipos: dict[int, TipoInscripcion] = {}
+        self._grupo_origen: dict[int, str] = {}  # visitantes (R21): {alumno_id: grupo de su origen}
         self._elegido: Alumno | None = None
         self._sugerencias: list[Alumno] = []
         self._indice_sug = -1
@@ -316,7 +318,7 @@ class VistaCurso(ctk.CTkFrame):
         self._buscar.pack(side="left")
         self._buscar.bind("<KeyRelease>", lambda _e: self._dibujar_tabla())
         self._ver_oyentes = ctk.CTkCheckBox(
-            fila, text="Mostrar oyentes", command=self._dibujar_tabla,
+            fila, text="Mostrar oyentes y visitantes", command=self._dibujar_tabla,
             checkbox_width=20, checkbox_height=20,
         )
         self._ver_oyentes.select()
@@ -350,6 +352,7 @@ class VistaCurso(ctk.CTkFrame):
         self._tabla.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
         barra.pack(side="right", fill="y", padx=(0, 4), pady=8)
         self._tabla.tag_configure("oyente", foreground=colores["suave"])
+        self._tabla.tag_configure("visitante", foreground=colores["visitante"])
         # En ttk gana la etiqueta configurada primero: «reciente» va antes que los tonos de equipo
         # para que el resaltado de lo recién guardado se vea sobre ellos.
         self._tabla.tag_configure("reciente", background=colores["reciente"])
@@ -389,6 +392,10 @@ class VistaCurso(ctk.CTkFrame):
         }
         self._numeros = {f.alumno.id: n for n, f in enumerate(self._filas, start=1)}
         self._tipos = {f.alumno.id: f.tipo for f in self._filas}
+        grupos = {c.id: c.grupo for c in self._servicio.listar_cursos(incluir_archivados=True)}
+        self._grupo_origen = {
+            f.alumno.id: grupos[f.curso_origen_id] for f in self._filas if f.curso_origen_id in grupos
+        }
         self._dibujar_tabla()
         self._actualizar_eliminar()
 
@@ -434,11 +441,26 @@ class VistaCurso(ctk.CTkFrame):
         self._poner_encabezados()
         self._actualizar_resumen()
 
+    def _sufijo_tipo(self, alumno_id: int, tipo: TipoInscripcion | None = None) -> str:
+        """«(oyente)» o «(visitante · 3001)» (con el grupo de su origen); nada para un regular."""
+        tipo = tipo or self._tipos.get(alumno_id)
+        if tipo == TipoInscripcion.OYENTE:
+            return "   (oyente)"
+        if tipo == TipoInscripcion.VISITANTE:
+            grupo = self._grupo_origen.get(alumno_id)
+            return f"   (visitante · {grupo})" if grupo else "   (visitante)"
+        return ""
+
+    @staticmethod
+    def _donde(curso) -> str:
+        """Para la franja: dónde se guardó lo capturado a un visitante (None si fue en este curso)."""
+        return f"  ·  guardado en el grupo {curso.grupo}" if curso is not None else ""
+
     def _insertar_alumno(self, f: ResumenAlumno, banda: int | None = None) -> None:
         valores = {
             "numero": self._numeros[f.alumno.id],
             "cuenta": f.alumno.num_cuenta or "—",
-            "nombre": f.alumno.nombre_completo + ("   (oyente)" if f.tipo == TipoInscripcion.OYENTE else ""),
+            "nombre": f.alumno.nombre_completo + self._sufijo_tipo(f.alumno.id, f.tipo),
             "equipo": f"Equipo {f.equipo}" if f.equipo is not None else "",
             "total": formatear_decimas(f.total),
             "tareas": formatear_decimas(f.tareas),
@@ -448,7 +470,7 @@ class VistaCurso(ctk.CTkFrame):
             "ultima": f.ultima_fecha.strftime("%d/%m/%Y") if f.ultima_fecha else "—",
             **{f"examen_{e.id}": formatear_decimas(f.calificaciones.get(e.id, 0.0)) for e in self._examenes},
         }
-        etiquetas = ("oyente",) if f.tipo == TipoInscripcion.OYENTE else ()
+        etiquetas = {TipoInscripcion.OYENTE: ("oyente",), TipoInscripcion.VISITANTE: ("visitante",)}.get(f.tipo, ())
         if banda is not None:
             etiquetas += (f"fila{banda}",)
         self._tabla.insert(
@@ -491,12 +513,15 @@ class VistaCurso(ctk.CTkFrame):
 
     def _actualizar_resumen(self) -> None:
         regulares = [f for f in self._filas if f.tipo == TipoInscripcion.REGULAR]
-        oyentes = len(self._filas) - len(regulares)
+        oyentes = sum(1 for f in self._filas if f.tipo == TipoInscripcion.OYENTE)
+        visitantes = sum(1 for f in self._filas if f.tipo == TipoInscripcion.VISITANTE)
         promedio = sum(f.total for f in regulares) / len(regulares) if regulares else 0
         sin = sum(1 for f in regulares if f.n_participaciones == 0)
         partes = [f"{len(regulares)} alumnos"]
         if oyentes:
             partes.append(f"{oyentes} oyente" + ("s" if oyentes != 1 else ""))
+        if visitantes:
+            partes.append(f"{visitantes} visitante" + ("s" if visitantes != 1 else ""))
         partes += [f"promedio {formatear_decimas(promedio)}", f"{sin} sin participaciones"]
         self._resumen.configure(text="  ·  ".join(partes))
 
@@ -615,7 +640,7 @@ class VistaCurso(ctk.CTkFrame):
             return
         self._caja_sugerencias.pack(fill="x", padx=16, pady=(0, 10))
         for i, alumno in enumerate(self._sugerencias):
-            sufijo = "   (oyente)" if self._tipos.get(alumno.id) == TipoInscripcion.OYENTE else ""
+            sufijo = self._sufijo_tipo(alumno.id)
             boton = ctk.CTkButton(
                 self._caja_sugerencias, anchor="w", height=30, corner_radius=6,
                 text=f"{alumno.nombre_completo}{sufijo}    ·    {alumno.num_cuenta or 'sin cuenta'}",
@@ -762,7 +787,7 @@ class VistaCurso(ctk.CTkFrame):
             efecto = f"{formatear_decimas(resultado.decimas, True)} décimas"
         self._exito(
             f"{resultado.alumno.nombre_completo}  ·  {efecto}  →  "
-            f"total {formatear_decimas(resultado.total)}{nuevo}",
+            f"total {formatear_decimas(resultado.total)}{nuevo}{self._donde(resultado.guardado_en)}",
             deshacible=True,
         )
         self._elegido = None
@@ -1084,7 +1109,7 @@ class VistaCurso(ctk.CTkFrame):
                  if resultado.calificacion_anterior else "")
         self._exito(
             f"{resultado.alumno.nombre_completo}  ·  {resultado.examen.nombre}: "
-            f"{formatear_decimas(resultado.puntos)}{antes}{nuevo}",
+            f"{formatear_decimas(resultado.puntos)}{antes}{nuevo}{self._donde(resultado.guardado_en)}",
             deshacible=True,
         )
         self._ultimo_registro = None
@@ -1214,7 +1239,7 @@ class VistaCurso(ctk.CTkFrame):
                  if resultado.anterior else "")
         self._exito(
             f"{resultado.alumno.nombre_completo}  ·  Tareas: "
-            f"{formatear_decimas(resultado.puntos)}{antes}{nuevo}",
+            f"{formatear_decimas(resultado.puntos)}{antes}{nuevo}{self._donde(resultado.guardado_en)}",
             deshacible=True,
         )
         self._ultimo_registro = None
@@ -1389,12 +1414,17 @@ class VistaCurso(ctk.CTkFrame):
         if resultado.equipo is not None:
             k = len(resultado.alumnos)
             texto = f"Equipo {resultado.equipo}  ·  Proyecto: {nueva} ({k} alumno{'s' if k != 1 else ''})"
+            if resultado.en_otro_grupo:
+                texto += (f"  ·  {resultado.en_otro_grupo} guardado{'s' if resultado.en_otro_grupo != 1 else ''} "
+                          "en su grupo de origen")
         else:
             alumno = resultado.alumnos[0]
             anterior = resultado.anteriores.get(alumno.id)
             antes = f"  (antes {formatear_decimas(anterior.puntos)})" if anterior else ""
             nuevo = "  (alumno agregado)" if alumno_nuevo else ""
             texto = f"{alumno.nombre_completo}  ·  Proyecto: {nueva}{antes}{nuevo}"
+            if resultado.en_otro_grupo and self._grupo_origen.get(alumno.id):
+                texto += f"  ·  guardado en el grupo {self._grupo_origen[alumno.id]}"
         self._exito(texto, deshacible=True)
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
         self._ultima_importacion = None
@@ -1501,8 +1531,15 @@ class VistaCurso(ctk.CTkFrame):
         return [(f.alumno, f.equipo) for f in self._filas if f.alumno.id in ids and f.equipo is not None]
 
     @staticmethod
-    def _aviso_ya_tienen_equipo(con_equipo: list[tuple[Alumno, int]]) -> str:
-        quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in con_equipo)
+    def _aviso_ya_tienen_equipo(con_equipo: list[tuple[Alumno, int]], grupo_de: dict[int, str] | None = None) -> str:
+        grupo_de = grupo_de or {}
+        quienes = ", ".join(
+            f"{a.nombre_completo} (equipo {n}" + (f" del grupo {grupo_de[a.id]}" if a.id in grupo_de else "") + ")"
+            for a, n in con_equipo
+        )
+        if grupo_de:  # un alumno está en un solo equipo entre su grupo de origen y los que visita (R21)
+            return (f"Ya tienen equipo: {quienes}. Un alumno está en un solo equipo entre su grupo y los que "
+                    "visita: sácalos primero de ese equipo.")
         return f"Ya tienen equipo: {quienes}. Sácalos primero (botón «Sacar de equipo» o clic derecho)."
 
     def crear_equipo(self) -> None:
@@ -1518,7 +1555,7 @@ class VistaCurso(ctk.CTkFrame):
         def guardar(nombre: str, proyecto: str):
             resultado = self._servicio.formar_equipo(self.curso.id, ids, nombre, proyecto)
             if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
-                raise ErrorDominio(self._aviso_ya_tienen_equipo(resultado.con_equipo))
+                raise ErrorDominio(self._aviso_ya_tienen_equipo(resultado.con_equipo, resultado.grupo_de))
             return resultado
 
         k = len(ids)
@@ -1612,8 +1649,8 @@ class VistaCurso(ctk.CTkFrame):
     def _menu_alumno(self, evento) -> tk.Menu | None:
         """Menú del clic derecho en el modo normal (sin «Formar equipos»): «Eliminar alumno…».
 
-        Sobre una fila no seleccionada la selecciona sola. Solo los oyentes se pueden eliminar: en
-        un regular la opción aparece desactivada, con el motivo.
+        Sobre una fila no seleccionada la selecciona sola. Solo los oyentes y los visitantes se pueden
+        eliminar: en un regular la opción aparece desactivada, con el motivo.
         """
         if self._formando:
             return None
@@ -1623,10 +1660,13 @@ class VistaCurso(ctk.CTkFrame):
         alumno_id = int(iid)
         self._tabla.selection_set(iid)
         menu = tk.Menu(self, tearoff=0)
-        if self._tipos.get(alumno_id) == TipoInscripcion.OYENTE:
+        tipo = self._tipos.get(alumno_id)
+        if tipo == TipoInscripcion.OYENTE:
             menu.add_command(label="Eliminar alumno…", command=lambda: self.eliminar_alumno(alumno_id))
+        elif tipo == TipoInscripcion.VISITANTE:
+            menu.add_command(label="Quitar visitante…", command=lambda: self.eliminar_alumno(alumno_id))
         else:
-            menu.add_command(label="Eliminar alumno (solo oyentes)", state="disabled")
+            menu.add_command(label="Eliminar alumno (solo oyentes y visitantes)", state="disabled")
         return menu
 
     def _al_clic_derecho(self, evento) -> str:
@@ -1670,8 +1710,11 @@ class VistaCurso(ctk.CTkFrame):
             self._error(str(error))
             return
         if resultado.estado == EstadoEquipo.YA_TIENEN_EQUIPO:
-            quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in resultado.con_equipo)
-            self._error(f"Ya tienen equipo: {quienes}. Sácalos primero.")
+            if resultado.grupo_de:
+                self._error(self._aviso_ya_tienen_equipo(resultado.con_equipo, resultado.grupo_de))
+            else:
+                quienes = ", ".join(f"{a.nombre_completo} (equipo {n})" for a, n in resultado.con_equipo)
+                self._error(f"Ya tienen equipo: {quienes}. Sácalos primero.")
             return
         ids = [a.id for a in resultado.miembros]
         self._ultimo_registro = self._ultima_calificacion = self._ultima_tareas = None
@@ -1717,18 +1760,38 @@ class VistaCurso(ctk.CTkFrame):
             return alumno
 
         alumno = DialogoAlumnoNuevo(self, crear).mostrar()
-        if alumno:
+        if alumno == "visitante":  # «¿Es de otro grupo de esta materia?»
+            self.agregar_visitante()
+        elif alumno:
             self.recargar()
             self._resaltar(alumno.id)
             self._exito(f"{alumno.nombre_completo} agregado al curso.", deshacible=False)
 
+    def agregar_visitante(self) -> None:
+        """Inscribe como visitante a un regular de otro grupo de la misma materia y ciclo (R21)."""
+        curso_id = self.curso.id
+        alumno = DialogoVisitante(
+            self, self.curso, self._servicio.cursos_hermanos(curso_id),
+            lambda consulta: self._servicio.candidatos_visitante(curso_id, consulta),
+            lambda alumno_id, origen_id: self._servicio.inscribir_visitante(curso_id, alumno_id, origen_id),
+        ).mostrar()
+        if alumno:
+            self.recargar()
+            self._resaltar(alumno.id)
+            grupo = self._grupo_origen.get(alumno.id, "")
+            self._exito(
+                f"{alumno.nombre_completo} agregado como visitante"
+                + (f" (su grupo de origen es el {grupo}: ahí se guardará lo que le captures)." if grupo else "."),
+                deshacible=False,
+            )
+
     def _actualizar_eliminar(self) -> None:
-        """El botón «Eliminar alumno» solo se habilita con un oyente elegido en la tabla (R20)."""
+        """El botón «Eliminar alumno» solo se habilita con un oyente o un visitante elegido en la tabla (R20)."""
         elegidos = self._seleccionados()
         activo = (
             not self._formando
             and len(elegidos) == 1
-            and self._tipos.get(elegidos[0]) == TipoInscripcion.OYENTE
+            and self._tipos.get(elegidos[0]) in (TipoInscripcion.OYENTE, TipoInscripcion.VISITANTE)
         )
         self._boton_eliminar_alumno.configure(state="normal" if activo else "disabled")
 
@@ -1737,7 +1800,7 @@ class VistaCurso(ctk.CTkFrame):
         if alumno_id is None:
             elegidos = self._seleccionados()
             if len(elegidos) != 1:
-                self._error("Elige en la tabla al oyente que quieres eliminar.")
+                self._error("Elige en la tabla al oyente o visitante que quieres eliminar.")
                 return
             alumno_id = elegidos[0]
         try:
@@ -1765,7 +1828,11 @@ class VistaCurso(ctk.CTkFrame):
             self._entrada_decimas.delete(0, "end")
             self._ocultar_sugerencias()
         self.recargar()
-        self._exito(f"{resumen.alumno.nombre_completo} eliminado del curso.", deshacible=True)
+        self._exito(
+            f"{resumen.alumno.nombre_completo} ya no es visitante de este grupo." if resumen.es_visitante
+            else f"{resumen.alumno.nombre_completo} eliminado del curso.",
+            deshacible=True,
+        )
         self._entrada_alumno.focus_set()
 
     def _deshacer_eliminacion(self) -> None:
@@ -1855,7 +1922,8 @@ class VistaCurso(ctk.CTkFrame):
     # ====================== exportar ======================
     def exportar(self) -> None:
         oyentes = sum(1 for f in self._filas if f.tipo == TipoInscripcion.OYENTE)
-        opciones = DialogoExportar(self, len(self._filas) - oyentes, oyentes).mostrar()
+        visitantes = sum(1 for f in self._filas if f.tipo == TipoInscripcion.VISITANTE)
+        opciones = DialogoExportar(self, len(self._filas) - oyentes - visitantes, oyentes, visitantes).mostrar()
         if not opciones:
             return
         extension = opciones["formato"]

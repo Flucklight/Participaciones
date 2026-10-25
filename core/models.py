@@ -10,6 +10,7 @@ from enum import Enum
 class TipoInscripcion(str, Enum):
     REGULAR = "regular"
     OYENTE = "oyente"
+    VISITANTE = "visitante"  # regular en otro grupo de la misma materia y ciclo (R21)
 
 
 @dataclass
@@ -135,6 +136,8 @@ class ResumenAlumno:
     proyecto: float = 0.0
     # Calificación final exacta (0–100, sin redondear); la calcula core/calificacion_final.py.
     final: float = 0.0
+    # Visitante (R21): curso de origen, donde viven sus datos; None para regulares y oyentes.
+    curso_origen_id: int | None = None
 
 
 class EstadoRegistro(str, Enum):
@@ -156,6 +159,8 @@ class ResultadoRegistro:
     # AMBIGUO: coincidencias dentro del curso. NO_EXISTE: alumnos que existen en
     # otros cursos y podrían inscribirse aquí.
     candidatos: list[Alumno] = field(default_factory=list)
+    # Visitante (R21): el curso de origen donde se guardó, si no es el que se estaba capturando.
+    guardado_en: Curso | None = None
 
 
 @dataclass
@@ -169,6 +174,7 @@ class ResultadoCalificacion:
     calificacion_anterior: Calificacion | None = None
     promedio: float | None = None
     candidatos: list[Alumno] = field(default_factory=list)
+    guardado_en: Curso | None = None  # visitante (R21): el origen, donde se guardó
 
 
 class EstadoEquipo(str, Enum):
@@ -196,6 +202,8 @@ class ResultadoEquipo:
     miembros: list[Alumno] = field(default_factory=list)
     # Con YA_TIENEN_EQUIPO: quién ya tenía equipo y cuál (no se movió ni se creó nada).
     con_equipo: list[tuple[Alumno, int]] = field(default_factory=list)
+    # Visitantes (R21): {alumno_id: grupo} de quien tiene ese equipo en OTRO grupo (su origen o uno que visita).
+    grupo_de: dict[int, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -213,6 +221,8 @@ class ResultadoProyecto:
     # lo que `deshacer_proyecto` restaura.
     anteriores: dict[int, CalificacionProyecto | None] = field(default_factory=dict)
     candidatos: list[Alumno] = field(default_factory=list)
+    # Visitantes (R21): a cuántos de `alumnos` se les guardó la nota en su curso de origen.
+    en_otro_grupo: int = 0
 
 
 @dataclass
@@ -224,6 +234,7 @@ class ResultadoTareas:
     # no se reemplazó nada; con GUARDADO es lo que `deshacer_tareas` restaura.
     anterior: CalificacionTareas | None = None
     candidatos: list[Alumno] = field(default_factory=list)
+    guardado_en: Curso | None = None  # visitante (R21): el origen, donde se guardó
 
 
 @dataclass
@@ -389,11 +400,12 @@ class InstantaneaAlumno:
     proyecto: CalificacionProyecto | None = None
     equipo: int | None = None
     alumno_borrado: bool = False
+    curso_origen_id: int | None = None  # solo un visitante (R21)
 
 
 @dataclass(frozen=True)
 class ResumenEliminacionAlumno:
-    """Lo que se perdería al eliminar a un oyente de un curso (para la confirmación)."""
+    """Lo que se perdería al eliminar a un oyente o a un visitante de un curso (para la confirmación)."""
 
     alumno: Alumno
     participaciones: int
@@ -402,6 +414,8 @@ class ResumenEliminacionAlumno:
     proyecto: bool
     equipo: int | None
     alumno_borrado: bool
+    es_visitante: bool = False  # solo se quita la visita (y su equipo aquí): los datos viven en el origen
+    grupo_origen: str = ""
 
 
 @dataclass(frozen=True)

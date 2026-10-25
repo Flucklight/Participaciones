@@ -7,7 +7,7 @@ from typing import Callable
 import customtkinter as ctk
 
 from core.errores import ErrorDominio
-from core.models import Alumno, Examen, ResumenEliminacionAlumno, TipoInscripcion
+from core.models import Alumno, Curso, Examen, ResumenEliminacionAlumno, TipoInscripcion
 from core.normalizacion import es_numero_de_cuenta, limpiar_nombre
 
 from . import tema
@@ -31,7 +31,9 @@ class DialogoElegirAlumno(Dialogo):
         zona.pack(fill="x")
         for alumno in candidatos:
             cuenta = alumno.num_cuenta or "sin cuenta"
-            etiqueta = "  (oyente)" if tipos.get(alumno.id) == TipoInscripcion.OYENTE else ""
+            etiqueta = {TipoInscripcion.OYENTE: "  (oyente)", TipoInscripcion.VISITANTE: "  (visitante)"}.get(
+                tipos.get(alumno.id), ""
+            )
             ctk.CTkButton(
                 zona, text=f"{alumno.nombre_completo}{etiqueta}\n{cuenta}", anchor="w", height=42,
                 fg_color="transparent", text_color=tema.COLOR_TEXTO,
@@ -109,6 +111,12 @@ class DialogoAlumnoNuevo(Dialogo):
         self._tipo = ctk.CTkSegmentedButton(self.cuerpo, values=["Oyente", "Regular"])
         self._tipo.set("Oyente")
         self._tipo.pack(anchor="w")
+        if not consulta:  # alta manual: puede ser alguien de otro grupo de la misma materia (R21)
+            ctk.CTkButton(
+                self.cuerpo, text="¿Es de otro grupo de esta materia? Agregar como visitante…", anchor="w",
+                fg_color="transparent", text_color=tema.COLOR_ACENTO_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
+                command=lambda: self.cerrar("visitante"),
+            ).pack(anchor="w", pady=(12, 0))
 
         self._error = ctk.CTkLabel(self.cuerpo, text="", text_color=tema.COLOR_PELIGRO,
                                    wraplength=450, justify="left", anchor="w")
@@ -146,13 +154,15 @@ class DialogoAlumnoNuevo(Dialogo):
 class DialogoExportar(Dialogo):
     """Opciones de exportación. Devuelve {"formato", "oyentes", "detalle"} o None."""
 
-    def __init__(self, master, n_alumnos: int, n_oyentes: int) -> None:
+    def __init__(self, master, n_alumnos: int, n_oyentes: int, n_visitantes: int = 0) -> None:
         super().__init__(master, "Exportar curso", ancho=460)
         ctk.CTkLabel(self.cuerpo, text="Exportar curso", font=tema.fuente(18, "bold")).pack(anchor="w")
         ctk.CTkLabel(
             self.cuerpo, anchor="w", justify="left", wraplength=410, text_color=tema.COLOR_TEXTO_SUAVE,
             text=f"{n_alumnos} alumno{'s' if n_alumnos != 1 else ''} regular{'es' if n_alumnos != 1 else ''}"
-                 + (f" y {n_oyentes} oyente{'s' if n_oyentes != 1 else ''}." if n_oyentes else "."),
+                 + (f", {n_oyentes} oyente{'s' if n_oyentes != 1 else ''}" if n_oyentes else "")
+                 + (f" y {n_visitantes} visitante{'s' if n_visitantes != 1 else ''}" if n_visitantes else "")
+                 + ".",
         ).pack(fill="x", pady=(4, 12))
 
         ctk.CTkLabel(self.cuerpo, text="Formato", anchor="w", font=tema.fuente(12),
@@ -164,8 +174,9 @@ class DialogoExportar(Dialogo):
         self._formato.pack(anchor="w", pady=(2, 12))
 
         self._oyentes = ctk.CTkCheckBox(
-            self.cuerpo, text="Incluir oyentes", checkbox_width=20, checkbox_height=20,
-            state="normal" if n_oyentes else "disabled",
+            self.cuerpo, text="Incluir oyentes y visitantes" if n_visitantes else "Incluir oyentes",
+            checkbox_width=20, checkbox_height=20,
+            state="normal" if (n_oyentes or n_visitantes) else "disabled",
         )
         self._oyentes.pack(anchor="w", pady=3)
         self._detalle = ctk.CTkCheckBox(
@@ -302,8 +313,8 @@ class DialogoEliminarAlumno(Dialogo):
 
     def __init__(self, master, resumen: ResumenEliminacionAlumno) -> None:
         super().__init__(master, "Eliminar alumno")
-        ctk.CTkLabel(self.cuerpo, text="Eliminar alumno del curso", font=tema.fuente(18, "bold"),
-                     text_color=tema.COLOR_PELIGRO).pack(anchor="w")
+        ctk.CTkLabel(self.cuerpo, text="Quitar visitante del grupo" if resumen.es_visitante else "Eliminar alumno del curso",
+                     font=tema.fuente(18, "bold"), text_color=tema.COLOR_PELIGRO).pack(anchor="w")
         ctk.CTkLabel(
             self.cuerpo, text=resumen.alumno.nombre_completo, wraplength=390, justify="left", anchor="w",
             font=tema.fuente(13, "bold"),
@@ -316,11 +327,94 @@ class DialogoEliminarAlumno(Dialogo):
             perdidas.append("su calificación de tareas")
         if resumen.proyecto:
             perdidas.append("su calificación de proyecto")
-        texto = "Se eliminará a este oyente de este curso. Se perderán " + ", ".join(perdidas) + "."
+        if resumen.es_visitante:  # sus datos viven en el origen: aquí solo se quita la visita
+            texto = (f"Dejará de ser visitante de este grupo. Sus calificaciones están en el grupo "
+                     f"{resumen.grupo_origen} y no se tocan.")
+        else:
+            texto = "Se eliminará a este oyente de este curso. Se perderán " + ", ".join(perdidas) + "."
         if resumen.equipo is not None:
             texto += f"\n\nDejará el equipo {resumen.equipo}."
-        if resumen.alumno_borrado:
+        if resumen.alumno_borrado and not resumen.es_visitante:
             texto += "\n\nNo está inscrito en otro curso, así que también se borrará del sistema."
         texto += "\n\nPodrás deshacerlo hasta tu siguiente captura."
         ctk.CTkLabel(self.cuerpo, text=texto, wraplength=390, justify="left", anchor="w").pack(fill="x")
-        self.botones("Eliminar", lambda: self.cerrar(True), peligro=True)
+        self.botones("Quitar" if resumen.es_visitante else "Eliminar", lambda: self.cerrar(True), peligro=True)
+
+
+class DialogoVisitante(Dialogo):
+    """Inscribe como visitante a un regular de otro grupo de la misma materia y ciclo (R21).
+
+    `buscar(consulta)` devuelve [(Alumno, Curso de origen)] y `guardar(alumno_id, origen_id)` inscribe
+    y devuelve el `Alumno`; los dos pueden lanzar ErrorDominio (se muestra dentro del diálogo).
+    """
+
+    def __init__(self, master, curso: Curso, grupos: list[Curso], buscar, guardar) -> None:
+        super().__init__(master, "Visitante de otro grupo", ancho=520)
+        self._buscar, self._guardar = buscar, guardar
+        ctk.CTkLabel(self.cuerpo, text="Visitante de otro grupo", font=tema.fuente(18, "bold")).pack(anchor="w")
+        if grupos:
+            texto = (f"Busca a un alumno regular de otro grupo de esta materia ({', '.join(c.grupo for c in grupos)}). "
+                     "Todo lo que le captures aquí se guardará en su grupo de origen.")
+        else:
+            texto = "No hay otros grupos de esta materia y ciclo en la aplicación."
+        ctk.CTkLabel(self.cuerpo, anchor="w", justify="left", wraplength=470, text=texto,
+                     text_color=tema.COLOR_TEXTO_SUAVE).pack(fill="x", pady=(6, 8))
+        fila = ctk.CTkFrame(self.cuerpo, fg_color="transparent")
+        fila.pack(fill="x")
+        self._consulta = ctk.CTkEntry(fila, height=34, placeholder_text="Número de cuenta o nombre")
+        self._consulta.pack(side="left", fill="x", expand=True)
+        self._consulta.bind("<Return>", lambda _e: self._buscar_ahora())
+        ctk.CTkButton(fila, text="Buscar", width=90, height=34, command=self._buscar_ahora,
+                      state="normal" if grupos else "disabled").pack(side="left", padx=(8, 0))
+        self._lista = ctk.CTkFrame(self.cuerpo, fg_color="transparent")
+        self._lista.pack(fill="x", pady=(8, 0))
+        self._opcion = ctk.StringVar(value="")
+        self._error = ctk.CTkLabel(self.cuerpo, text="", text_color=tema.COLOR_PELIGRO,
+                                   wraplength=470, justify="left", anchor="w")
+        self._error.pack(fill="x", pady=(8, 0))
+        self.botones("Agregar como visitante", self._aceptar)
+
+    def al_mostrar(self) -> None:
+        self._consulta.focus_set()
+
+    def _reajustar(self) -> None:
+        self.update_idletasks()
+        self.geometry(f"{self._ancho}x{self.winfo_reqheight()}")
+
+    def _buscar_ahora(self) -> None:
+        self._error.configure(text="")
+        try:
+            encontrados = self._buscar(self._consulta.get())
+        except ErrorDominio as error:
+            self._error.configure(text=str(error))
+            return
+        for hijo in self._lista.winfo_children():
+            hijo.destroy()
+        self._opcion.set("")
+        if not encontrados:
+            ctk.CTkLabel(self._lista, anchor="w", justify="left", wraplength=470, text_color=tema.COLOR_TEXTO_SUAVE,
+                         text="Ningún alumno regular de otros grupos coincide (quien ya está en este grupo no aparece)."
+                         ).pack(fill="x")
+        for alumno, origen in encontrados[:8]:
+            ctk.CTkRadioButton(
+                self._lista, variable=self._opcion, value=f"{alumno.id}:{origen.id}",
+                radiobutton_width=18, radiobutton_height=18,
+                text=f"{alumno.nombre_completo}  ·  {alumno.num_cuenta or 'sin cuenta'}  ·  grupo {origen.grupo}",
+            ).pack(anchor="w", pady=2)
+        if len(encontrados) == 1:  # con varias coincidencias hay que elegir: nunca se adivina
+            alumno, origen = encontrados[0]
+            self._opcion.set(f"{alumno.id}:{origen.id}")
+        self._reajustar()
+
+    def _aceptar(self) -> None:
+        valor = self._opcion.get()
+        if not valor:
+            self._error.configure(text="Busca y elige a quién inscribir como visitante.")
+            return
+        alumno_id, origen_id = (int(x) for x in valor.split(":"))
+        try:
+            alumno = self._guardar(alumno_id, origen_id)
+        except ErrorDominio as error:
+            self._error.configure(text=str(error))
+            return
+        self.cerrar(alumno)

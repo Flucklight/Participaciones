@@ -38,7 +38,11 @@ class VistaHistorial(ctk.CTkFrame):
         self._servicio = app.servicio
         self._alumno_id = alumno_id
         self._cursos: list[Curso] = self._servicio.cursos_de_alumno(alumno_id)
-        self._curso_id = curso_id if any(c.id == curso_id for c in self._cursos) else self._cursos[0].id
+        # Un visitante (R21) no tiene datos en el grupo que visita: se muestran los de su origen.
+        self._curso_id = self._servicio.curso_de_datos(curso_id, alumno_id).id
+        if not any(c.id == self._curso_id for c in self._cursos):
+            self._curso_id = self._cursos[0].id
+        self._volver_a = curso_id  # «← Curso» regresa al grupo desde el que se abrió
         self._lineas: dict[int, LineaHistorial] = {}
         self._lineas_examen: dict[int, LineaExamen] = {}
         self._tareas = None  # CalificacionTareas del alumno en el curso, o None
@@ -67,7 +71,7 @@ class VistaHistorial(ctk.CTkFrame):
         ctk.CTkButton(
             cab, text="←  Curso", width=90, height=28, fg_color="transparent",
             text_color=tema.COLOR_ACENTO_TEXTO, hover_color=tema.COLOR_NAV_ACTIVO,
-            command=lambda: self._app.abrir_curso(self._curso_id),
+            command=lambda: self._app.abrir_curso(self._volver_a),
         ).pack(anchor="w")
         fila = ctk.CTkFrame(cab, fg_color="transparent")
         fila.pack(fill="x", pady=(2, 0))
@@ -229,7 +233,7 @@ class VistaHistorial(ctk.CTkFrame):
         alumno = self.alumno
         tipo = self._servicio.tipo_inscripcion(self._curso_id, self._alumno_id)
         self._titulo.configure(text=alumno.nombre_completo)
-        etiqueta_tipo = "Oyente" if tipo == TipoInscripcion.OYENTE else "Regular"
+        etiqueta_tipo = {TipoInscripcion.OYENTE: "Oyente", TipoInscripcion.VISITANTE: "Visitante"}.get(tipo, "Regular")
         self._subtitulo.configure(
             text=f"Cuenta {alumno.num_cuenta or 'sin asignar'}  ·  {etiqueta_tipo}"
         )
@@ -316,7 +320,7 @@ class VistaHistorial(ctk.CTkFrame):
         ))
 
     def _cambiar_curso(self, etiqueta: str) -> None:
-        self._curso_id = self._etiquetas[etiqueta]
+        self._curso_id = self._volver_a = self._etiquetas[etiqueta]
         self.recargar()
 
     def _seleccionada(self) -> int | None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from datetime import date
 
 from .models import (
@@ -147,6 +148,14 @@ class Repositorio:
         )
 
     def eliminar_curso(self, curso_id: int) -> None:
+        # Las visitas que apuntan a este curso se borran solas (cascada); su pertenencia a un equipo
+        # en el grupo que visitaban, no, así que se quita antes. Los equipos mismos se conservan.
+        self._db.execute(
+            "DELETE FROM miembro_equipo WHERE EXISTS (SELECT 1 FROM inscripcion i"
+            " WHERE i.curso_origen_id = ? AND i.curso_id = miembro_equipo.curso_id"
+            " AND i.alumno_id = miembro_equipo.alumno_id)",
+            (curso_id,),
+        )
         self._db.execute("DELETE FROM curso WHERE id = ?", (curso_id,))
 
     def contar_participaciones_curso(self, curso_id: int) -> int:
@@ -243,13 +252,57 @@ class Repositorio:
         return TipoInscripcion(fila["tipo"]) if fila else None
 
     def guardar_inscripcion(
-        self, curso_id: int, alumno_id: int, tipo: TipoInscripcion
+        self, curso_id: int, alumno_id: int, tipo: TipoInscripcion, curso_origen_id: int | None = None
     ) -> None:
+        """Alta o cambio de tipo. `curso_origen_id` solo se da (y es obligatorio) para un visitante."""
         self._db.execute(
-            "INSERT INTO inscripcion (curso_id, alumno_id, tipo) VALUES (?, ?, ?)"
-            " ON CONFLICT (curso_id, alumno_id) DO UPDATE SET tipo = excluded.tipo",
-            (curso_id, alumno_id, tipo.value),
+            "INSERT INTO inscripcion (curso_id, alumno_id, tipo, curso_origen_id) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (curso_id, alumno_id) DO UPDATE SET tipo = excluded.tipo,"
+            " curso_origen_id = excluded.curso_origen_id",
+            (curso_id, alumno_id, tipo.value, curso_origen_id),
         )
+
+    def obtener_origen_inscripcion(self, curso_id: int, alumno_id: int) -> int | None:
+        """El curso de origen de un visitante; None si no es visitante (o no está inscrito)."""
+        fila = self._db.execute(
+            "SELECT curso_origen_id FROM inscripcion WHERE curso_id = ? AND alumno_id = ?",
+            (curso_id, alumno_id),
+        ).fetchone()
+        return fila["curso_origen_id"] if fila else None
+
+    def cursos_de_visita(self, origen_id: int, alumno_id: int) -> list[int]:
+        """Los cursos donde el alumno es visitante con ese curso de origen."""
+        filas = self._db.execute(
+            "SELECT curso_id FROM inscripcion WHERE curso_origen_id = ? AND alumno_id = ? ORDER BY curso_id",
+            (origen_id, alumno_id),
+        )
+        return [f["curso_id"] for f in filas]
+
+    def contar_visitantes_de_origen(self, curso_id: int) -> int:
+        """Cuántas visitas apuntan a este curso como origen (se pierden si se elimina)."""
+        return self._db.execute(
+            "SELECT COUNT(*) FROM inscripcion WHERE curso_origen_id = ?", (curso_id,)
+        ).fetchone()[0]
+
+    def cursos_hermanos(self, curso: Curso) -> list[Curso]:
+        """Los otros cursos con el mismo ciclo y la misma materia (comparados normalizados)."""
+        ciclo, materia = normalizar(curso.ciclo), normalizar(curso.materia)
+        return [
+            c for c in self.listar_cursos(incluir_archivados=True)
+            if c.id != curso.id and normalizar(c.ciclo) == ciclo and normalizar(c.materia) == materia
+        ]
+
+    def regulares_de_cursos(self, curso_ids: list[int]) -> list[tuple[Alumno, int]]:
+        """[(alumno, curso)] de los alumnos regulares de esos cursos, por nombre."""
+        if not curso_ids:
+            return []
+        marcas = ", ".join("?" * len(curso_ids))
+        filas = self._db.execute(
+            f"SELECT a.*, i.curso_id AS origen FROM inscripcion i JOIN alumno a ON a.id = i.alumno_id"
+            f" WHERE i.tipo = 'regular' AND i.curso_id IN ({marcas}) ORDER BY a.nombre_norm, i.curso_id",
+            curso_ids,
+        )
+        return [(_alumno(f), f["origen"]) for f in filas]
 
     def decimas_por_alumno(self, curso_id: int) -> dict[int, list[float]]:
         """Décimas de cada alumno del curso en orden cronológico (para aplicar el piso)."""
@@ -264,6 +317,38 @@ class Repositorio:
         return por_alumno
 
     def resumen_curso(self, curso_id: int) -> list[ResumenAlumno]:
+        """Una fila por inscrito. Las de los visitantes (R21) traen los datos de su curso de origen,
+        con las calificaciones de examen reindexadas a los exámenes de este curso (por nombre)."""
+        filas = self._filas_curso(curso_id)
+        if not any(f.tipo == TipoInscripcion.VISITANTE for f in filas):
+            return filas
+        propios = {normalizar(e.nombre): e.id for e in self.listar_examenes(curso_id)}
+        de_origen: dict[int, tuple[dict[int, ResumenAlumno], dict[int, str]]] = {}
+        for i, f in enumerate(filas):
+            if f.tipo != TipoInscripcion.VISITANTE:
+                continue
+            if f.curso_origen_id not in de_origen:
+                de_origen[f.curso_origen_id] = (
+                    {r.alumno.id: r for r in self._filas_curso(f.curso_origen_id)},
+                    {e.id: normalizar(e.nombre) for e in self.listar_examenes(f.curso_origen_id)},
+                )
+            filas_origen, nombres = de_origen[f.curso_origen_id]
+            origen = filas_origen.get(f.alumno.id)
+            if origen is None:
+                continue
+            calificaciones = {
+                propios[nombres[examen_id]]: puntos
+                for examen_id, puntos in origen.calificaciones.items()
+                if nombres.get(examen_id) in propios
+            }
+            filas[i] = replace(
+                origen, tipo=TipoInscripcion.VISITANTE, equipo=f.equipo,
+                calificaciones=calificaciones, curso_origen_id=f.curso_origen_id,
+            )
+        return filas
+
+    def _filas_curso(self, curso_id: int) -> list[ResumenAlumno]:
+        """Las filas tal como están guardadas en este curso (sin resolver visitantes)."""
         decimas = self.decimas_por_alumno(curso_id)
         examenes = [e.id for e in self.listar_examenes(curso_id)]
         puntos = self.puntos_por_alumno(curso_id)
@@ -271,7 +356,7 @@ class Repositorio:
         equipos = self.equipos_por_alumno(curso_id)
         proyecto = self.proyecto_por_alumno(curso_id)
         filas = self._db.execute(
-            "SELECT a.id, a.num_cuenta, a.nombre_completo, i.tipo,"
+            "SELECT a.id, a.num_cuenta, a.nombre_completo, i.tipo, i.curso_origen_id,"
             "       COUNT(p.id) AS n, MAX(p.fecha) AS ultima"
             " FROM inscripcion i"
             " JOIN alumno a ON a.id = i.alumno_id"
@@ -295,6 +380,7 @@ class Repositorio:
                 tareas=tareas.get(f["id"], 0.0),
                 equipo=equipos.get(f["id"]),
                 proyecto=proyecto.get(f["id"], 0.0),
+                curso_origen_id=f["curso_origen_id"],
             )
             for f in filas
         ]
@@ -334,6 +420,7 @@ class Repositorio:
             proyecto=self.obtener_proyecto(curso_id, alumno_id),
             equipo=self.equipo_de(curso_id, alumno_id),
             alumno_borrado=en_otros == 0,
+            curso_origen_id=self.obtener_origen_inscripcion(curso_id, alumno_id),
         )
 
     def eliminar_alumno_de_curso(self, curso_id: int, alumno_id: int) -> None:
@@ -358,7 +445,7 @@ class Repositorio:
         alumno = s.alumno
         if s.alumno_borrado:
             alumno = self.insertar_alumno(Alumno(None, alumno.nombre_completo, alumno.num_cuenta))
-        self.guardar_inscripcion(s.curso_id, alumno.id, s.tipo)
+        self.guardar_inscripcion(s.curso_id, alumno.id, s.tipo, s.curso_origen_id)
         for p in s.participaciones:
             self.insertar_participacion(Participacion(None, s.curso_id, alumno.id, p.decimas, p.fecha, p.nota))
         for c in s.calificaciones:
